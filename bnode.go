@@ -130,7 +130,7 @@ func nodeLookupLE(node BNode, key []byte) uint16 {
 // binSearch copied from sort.Search but update to `	i, j := 1, n`
 // due to 'the first key is a copy from the parent node'
 func binSearch(n int, f func(int) bool) int {
-	i, j := 1, n
+	i, j := 0, n
 	for i < j {
 		h := int(uint(i+j) >> 1)
 		if !f(h) {
@@ -144,7 +144,7 @@ func binSearch(n int, f func(int) bool) int {
 
 func nodeLookupLEBinary(node BNode, key []byte) uint16 {
 	nkeys := node.nKeys()
-	found := binSearch(int(nkeys), func(i int) bool {
+	found := binSearch(int(nkeys-1), func(i int) bool {
 		cmp := bytes.Compare(node.getKey(uint16(i)), key)
 		if cmp < 0 {
 			return false

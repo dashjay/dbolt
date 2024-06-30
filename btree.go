@@ -113,13 +113,13 @@ func (this *BTree) Insert(key []byte, val []byte) {
 	}
 }
 
-// delete a key and returns whether the key was there
+// Delete deletes a key and returns whether the key was there
 func (this *BTree) Delete(key []byte) bool {
 	if this.root == 0 {
 		return false
 	}
 	newNode := this.treeDelete(this.getNode(this.root), key)
-	if newNode == nil {
+	if len(newNode) == 0 {
 		return false
 	}
 	this.root = this.newNode(newNode)
@@ -175,7 +175,6 @@ func (this *BTree) treeDelete(node BNode, key []byte) BNode {
 	// act depending on the node type
 	switch node.bType() {
 	case BNODE_LEAF:
-
 		// leaf, node.getKey(idx) == key
 		if bytes.Equal(key, node.getKey(idx)) {
 			// found the key, delete it.
