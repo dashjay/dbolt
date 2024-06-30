@@ -2,9 +2,12 @@ package dbolt
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/assert"
+	"fmt"
 	"testing"
 	"unsafe"
+
+	"github.com/schollz/progressbar/v3"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBtree(t *testing.T) {
@@ -244,4 +247,64 @@ func (c *C) traversalUtil(node BNode, fn func(key []byte, val []byte)) {
 
 func (c *C) traversal(fn func(key []byte, val []byte)) {
 	c.traversalUtil(c.tree.getNode(c.tree.root), fn)
+}
+
+func TestCTree(t *testing.T) {
+	cTree := newC()
+	KeyOfInt := func(i int) []byte {
+		return []byte(fmt.Sprintf("key-%08d", i))
+	}
+	ValueOfInt := func(i int) []byte {
+		return []byte(fmt.Sprintf("value-%08d", i))
+	}
+	const N = 1_000_000 // 1 million
+	bar := progressbar.Default(N, "adding keys")
+	for i := 0; i < N; i++ {
+		bar.Add(1)
+		cTree.add(KeyOfInt(i), ValueOfInt(i))
+	}
+
+	bar = progressbar.Default(N, "getting keys")
+
+	for i := 0; i < N; i++ {
+		bar.Add(1)
+		val, exists := cTree.get(KeyOfInt(i))
+		assert.True(t, exists)
+		assert.Equal(t, val, ValueOfInt(i))
+	}
+
+	idx := 0
+	nextKeyValuePair := func() ([]byte, []byte) {
+		defer func() {
+			idx++
+		}()
+		return KeyOfInt(idx), ValueOfInt(idx)
+	}
+
+	bar = progressbar.Default(N, "iter keys")
+	first := true
+	cTree.traversal(func(key []byte, val []byte) {
+		if first {
+			first = false
+			return
+		}
+		bar.Add(1)
+		expectKey, expectVal := nextKeyValuePair()
+		assert.Equal(t, expectKey, key)
+		assert.Equal(t, expectVal, val)
+	})
+
+	bar = progressbar.Default(N, "del keys")
+	for i := 0; i < N; i++ {
+		bar.Add(1)
+		deleted := cTree.del(KeyOfInt(i))
+		assert.True(t, deleted)
+	}
+
+	bar = progressbar.Default(N, "del keys again")
+	for i := 0; i < N; i++ {
+		bar.Add(1)
+		deleted := cTree.del(KeyOfInt(i))
+		assert.False(t, deleted)
+	}
 }
