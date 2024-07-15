@@ -170,11 +170,11 @@ func leafInsert(
 	newNode.setHeader(BNODE_LEAF, oldNode.nKeys()+1) // setup the header
 
 	// copy all keys before the place to insert
-	nodeAppendRange(newNode, oldNode, 0, 0, idx)
+	nodeAppendKVOrPtrRange(newNode, oldNode, 0, 0, idx)
 	// insert the specified key
-	nodeAppendKV(newNode, idx, 0, key, val)
+	nodeAppendKVOrPtr(newNode, idx, 0, key, val)
 	// copy left keys
-	nodeAppendRange(newNode, oldNode, idx+1, idx, oldNode.nKeys()-idx)
+	nodeAppendKVOrPtrRange(newNode, oldNode, idx+1, idx, oldNode.nKeys()-idx)
 }
 
 // leafUpdate update an exists key to a leaf node
@@ -186,20 +186,23 @@ func leafUpdate(
 	// newNode has same size as oldNode
 	newNode.setHeader(BNODE_LEAF, oldNode.nKeys()) // setup the header
 
-	nodeAppendRange(newNode, oldNode, 0, 0, idx)
-	nodeAppendKV(newNode, idx, 0, key, val)
-	nodeAppendRange(newNode, oldNode, idx+1, idx+1, oldNode.nKeys()-idx-1)
+	nodeAppendKVOrPtrRange(newNode, oldNode, 0, 0, idx)
+	nodeAppendKVOrPtr(newNode, idx, 0, key, val)
+	nodeAppendKVOrPtrRange(newNode, oldNode, idx+1, idx+1, oldNode.nKeys()-idx-1)
 }
 
 // leafDelete remove a key from a leaf node
 func leafDelete(newNode BNode, oldNode BNode, idx uint16) {
 	newNode.setHeader(BNODE_LEAF, oldNode.nKeys()-1)
-	nodeAppendRange(newNode, oldNode, 0, 0, idx)                         // [0, idx)
-	nodeAppendRange(newNode, oldNode, idx, idx+1, oldNode.nKeys()-idx-1) // [idx+1, n-idx-1)
+	nodeAppendKVOrPtrRange(newNode, oldNode, 0, 0, idx)                         // [0, idx)
+	nodeAppendKVOrPtrRange(newNode, oldNode, idx, idx+1, oldNode.nKeys()-idx-1) // [idx+1, n-idx-1)
 }
 
-// nodeAppendKV copy a KV into the position
-func nodeAppendKV(newNode BNode, idx uint16, ptr uint64, key []byte, val []byte) {
+// nodeAppendKVOrPtr set key-value pair or ptr(to other nodes) into the target node
+// if node type is leaf, key-value pair will be inserted into this node, will be omitted (ptr means nothing for leaf node)
+// if node type is node, ptr will be set to ptr list, key will be used as the first key of the node which ptr pointer to
+// (value means nothing for node type node)
+func nodeAppendKVOrPtr(newNode BNode, idx uint16, ptr uint64, key []byte, val []byte) {
 	keySize := uint16(len(key))
 	valueSize := uint16(len(val))
 
@@ -225,13 +228,13 @@ func nodeAppendKV(newNode BNode, idx uint16, ptr uint64, key []byte, val []byte)
 	newNode.setOffset(idx+1, offsetForNextKey)
 }
 
-// nodeAppendRange copy multiple KVs into the position from the old node
-func nodeAppendRange(
+// nodeAppendKVOrPtrRange copy multiple KVs into the position from the old node
+func nodeAppendKVOrPtrRange(
 	newNode BNode, oldNode BNode,
 	dstNew uint16, srcOld uint16, n uint16,
 ) {
 	for i := uint16(0); i < n; i++ {
-		nodeAppendKV(newNode, dstNew+i, oldNode.getPtr(srcOld+i), oldNode.getKey(srcOld+i), oldNode.getVal(srcOld+i))
+		nodeAppendKVOrPtr(newNode, dstNew+i, oldNode.getPtr(srcOld+i), oldNode.getKey(srcOld+i), oldNode.getVal(srcOld+i))
 	}
 }
 
@@ -287,8 +290,8 @@ func nodeSplit2(left BNode, right BNode, old BNode) {
 	left.setHeader(old.bType(), nLeft)
 	right.setHeader(old.bType(), nRight)
 
-	nodeAppendRange(left, old, 0, 0, nLeft)
-	nodeAppendRange(right, old, 0, nLeft, nRight)
+	nodeAppendKVOrPtrRange(left, old, 0, 0, nLeft)
+	nodeAppendKVOrPtrRange(right, old, 0, nLeft, nRight)
 
 	// the left half may be still too big
 	Assertf(right.nBytes() <= BTREE_PAGE_SIZE, "assertion failed: node size too big after split: %d", right.nBytes())

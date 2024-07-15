@@ -19,8 +19,8 @@ func TestBtree(t *testing.T) {
 		rightNode.setHeader(BNODE_LEAF, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			nodeAppendKV(leftNode, i, 1, keyOf(i), valueOf(i))
-			nodeAppendKV(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
+			nodeAppendKVOrPtr(leftNode, i, 1, keyOf(i), valueOf(i))
+			nodeAppendKVOrPtr(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
 		}
 		newNode := make(BNode, BTREE_PAGE_SIZE)
 		nodeMerge(newNode, leftNode, rightNode)
@@ -98,8 +98,8 @@ func BenchmarkBtree(b *testing.B) {
 		rightNode.setHeader(BNODE_LEAF, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			nodeAppendKV(leftNode, i, 1, keyOf(i), valueOf(i))
-			nodeAppendKV(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
+			nodeAppendKVOrPtr(leftNode, i, 1, keyOf(i), valueOf(i))
+			nodeAppendKVOrPtr(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
 		}
 
 		b.ResetTimer()
