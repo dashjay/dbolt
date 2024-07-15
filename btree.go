@@ -13,36 +13,37 @@ type BTree struct {
 	delNode func(uint64)        // deallocate a page
 }
 
-// replace a link with one or multiple links
+// nodeReplaceKidN replace a link with one or multiple links
 func (this *BTree) nodeReplaceKidN(newNode BNode, oldNode BNode, idx uint16, kids ...BNode,
 ) {
 	inc := uint16(len(kids))
 	newNode.setHeader(BNODE_NODE, oldNode.nKeys()+inc-1)
-	nodeAppendRange(newNode, oldNode, 0, 0, idx)
+	nodeAppendKVOrPtrRange(newNode, oldNode, 0, 0, idx)
 	for i, node := range kids {
-		nodeAppendKV(newNode, idx+uint16(i), this.newNode(node), node.getKey(0), nil)
+		nodeAppendKVOrPtr(newNode, idx+uint16(i), this.newNode(node), node.getKey(0), nil)
 		//                     ^position      ^pointer            ^key                      ^val
 	}
-	nodeAppendRange(newNode, oldNode, idx+inc, idx+1, oldNode.nKeys()-(idx+1))
+	nodeAppendKVOrPtrRange(newNode, oldNode, idx+inc, idx+1, oldNode.nKeys()-(idx+1))
 }
 
-func nodeReplace2Kid(
+// nodeReplace2Kid is used in deleting nodes.
+func (this *BTree) nodeReplace2Kid(
 	newNode BNode, oldNode BNode, idx uint16, ptr uint64, key []byte,
 ) {
 	newNode.setHeader(BNODE_NODE, oldNode.nKeys()-1)
-	nodeAppendRange(newNode, oldNode, 0, 0, idx)
-	nodeAppendKV(newNode, idx, ptr, key, nil)
-	nodeAppendRange(newNode, oldNode, idx+1, idx+2, oldNode.nKeys()-(idx+2))
+	nodeAppendKVOrPtrRange(newNode, oldNode, 0, 0, idx)
+	nodeAppendKVOrPtr(newNode, idx, ptr, key, nil)
+	nodeAppendKVOrPtrRange(newNode, oldNode, idx+1, idx+2, oldNode.nKeys()-(idx+2))
 }
 
-// nodeInsert is part of the treeInsert: KV insertion to an internal node
-func (this *BTree) nodeInsert(newNode BNode, node BNode, idx uint16,
+// _nodeInsert is part of the _treeInsert: KV insertion to an internal node
+func (this *BTree) _nodeInsert(newNode BNode, node BNode, idx uint16,
 	key []byte, val []byte,
 ) {
 	// get the ptr by idx
 	kptr := node.getPtr(idx)
 	// recursive insertion to the kid node
-	knode := this.treeInsert(this.getNode(kptr), key, val)
+	knode := this._treeInsert(this.getNode(kptr), key, val)
 	// split the result
 	nsplit, split := nodeSplit3(knode)
 	// deallocate the kid node
@@ -51,11 +52,11 @@ func (this *BTree) nodeInsert(newNode BNode, node BNode, idx uint16,
 	this.nodeReplaceKidN(newNode, node, idx, split[:nsplit]...)
 }
 
-// treeInsert insert a KV into a node.
+// _treeInsert insert a KV into a node.
 // BNode return by this function may be oversize.
 // the caller is responsible for deallocating the input node
 // and splitting and allocating result nodes.
-func (this *BTree) treeInsert(node BNode, key []byte, val []byte) BNode {
+func (this *BTree) _treeInsert(node BNode, key []byte, val []byte) BNode {
 	// the result node.
 	// it's allowed to be bigger than 1 page and will be split if so
 	newNode := BNode(make([]byte, 2*BTREE_PAGE_SIZE))
@@ -76,36 +77,39 @@ func (this *BTree) treeInsert(node BNode, key []byte, val []byte) BNode {
 		}
 	case BNODE_NODE:
 		// internal node, insert it to a kid node.
-		this.nodeInsert(newNode, node, idx, key, val)
+		this._nodeInsert(newNode, node, idx, key, val)
 	default:
-		Assertf(false, "assert failed: unknown nodeType %d", node.bType())
+		Assertf(false, "assertion failed: unknown nodeType %d", node.bType())
 	}
 	return newNode
 }
 
 func (this *BTree) Insert(key []byte, val []byte) {
 	if this.root == 0 {
-		// create the first node
+		// create the first node (leaf type)
 		rootBNode := BNode(make([]byte, BTREE_PAGE_SIZE))
 		rootBNode.setHeader(BNODE_LEAF, 2)
 		// a dummy key, this makes this tree cover the whole key space.
 		// thus a lookup can always find a containing node.
-		nodeAppendKV(rootBNode, 0, 0, nil, nil)
-		nodeAppendKV(rootBNode, 1, 0, key, val)
+		nodeAppendKVOrPtr(rootBNode, 0, 0, nil, nil)
+		nodeAppendKVOrPtr(rootBNode, 1, 0, key, val)
 		this.root = this.newNode(rootBNode)
 		return
 	}
 
-	node := this.treeInsert(this.getNode(this.root), key, val)
+	// node type of root will be always leaf type until it's size is more than one page (nSplit > 1)
+	node := this._treeInsert(this.getNode(this.root), key, val)
 	nSplit, split := nodeSplit3(node)
 	this.delNode(this.root)
 	if nSplit > 1 {
 		// the root was split, add a new level.
 		root := BNode(make([]byte, BTREE_PAGE_SIZE))
+		// the root will become a node type
+		// after this, size of bnode will become the size of sub node instead of key nums
 		root.setHeader(BNODE_NODE, nSplit)
-		for i, knode := range split[:nSplit] {
-			ptr, k := this.newNode(knode), knode.getKey(0)
-			nodeAppendKV(root, uint16(i), ptr, k, nil)
+		for i, subNode := range split[:nSplit] {
+			nodeAppendKVOrPtr(root, uint16(i),
+				this.newNode(subNode), subNode.getKey(0), nil)
 		}
 		this.root = this.newNode(root)
 	} else {
@@ -118,7 +122,7 @@ func (this *BTree) Delete(key []byte) bool {
 	if this.root == 0 {
 		return false
 	}
-	newNode := this.treeDelete(this.getNode(this.root), key)
+	newNode := this._treeDelete(this.getNode(this.root), key)
 	if len(newNode) == 0 {
 		return false
 	}
@@ -155,17 +159,17 @@ func (this *BTree) shouldMerge(node BNode, idx uint16, updated BNode) (int, BNod
 
 func nodeMerge(newNode BNode, leftNode BNode, rightNode BNode) {
 	mergedSize := leftNode.nBytes() + rightNode.nBytes() - HEADER
-	Assertf(mergedSize < BTREE_PAGE_SIZE, "assert failed: node merged size is too large: %d", mergedSize)
+	Assertf(mergedSize < BTREE_PAGE_SIZE, "assertion failed: node merged size is too large: %d", mergedSize)
 
 	newNode.setHeader(leftNode.bType(), leftNode.nKeys()+rightNode.nKeys())
-	nodeAppendRange(newNode, leftNode, 0, 0, leftNode.nKeys())
-	nodeAppendRange(newNode, rightNode, leftNode.nKeys(), 0, rightNode.nKeys())
+	nodeAppendKVOrPtrRange(newNode, leftNode, 0, 0, leftNode.nKeys())
+	nodeAppendKVOrPtrRange(newNode, rightNode, leftNode.nKeys(), 0, rightNode.nKeys())
 }
 
-// treeDelete delete a KV from a node.
+// _treeDelete delete a KV from a node.
 // the caller is responsible for deallocating the input node
 // and merge the result node with sibling
-func (this *BTree) treeDelete(node BNode, key []byte) BNode {
+func (this *BTree) _treeDelete(node BNode, key []byte) BNode {
 	// the result node.
 	newNode := BNode(make([]byte, BTREE_PAGE_SIZE))
 
@@ -183,20 +187,19 @@ func (this *BTree) treeDelete(node BNode, key []byte) BNode {
 			return nil // indicate not found
 		}
 	case BNODE_NODE:
-		return this.nodeDelete(node, idx, key)
-		// internal node, insert it to a kid node.
-		//this.nodeInsert(newNode, node, idx, key, val)
+		return this._nodeDelete(node, idx, key)
+		// delete key from a node
 	default:
-		Assertf(false, "assert failed: unknown nodeType %d", node.bType())
+		Assertf(false, "assertion failed: unknown nodeType %d", node.bType())
 	}
 	return newNode
 }
 
-// delete a key from an internal node; part of the treeDelete()
-func (this *BTree) nodeDelete(node BNode, idx uint16, key []byte) BNode {
+// delete a key from an internal node; part of the _treeDelete()
+func (this *BTree) _nodeDelete(node BNode, idx uint16, key []byte) BNode {
 	// recurse into the kid
 	kptr := node.getPtr(idx)
-	updated := this.treeDelete(this.getNode(kptr), key)
+	updated := this._treeDelete(this.getNode(kptr), key)
 	if len(updated) == 0 {
 		return BNode{} // not found
 	}
@@ -210,12 +213,12 @@ func (this *BTree) nodeDelete(node BNode, idx uint16, key []byte) BNode {
 		merged := BNode(make([]byte, BTREE_PAGE_SIZE))
 		nodeMerge(merged, sibling, updated)
 		this.delNode(node.getPtr(idx - 1))
-		nodeReplace2Kid(newNode, node, idx-1, this.newNode(merged), merged.getKey(0))
+		this.nodeReplace2Kid(newNode, node, idx-1, this.newNode(merged), merged.getKey(0))
 	case mergeDir > 0: // right
 		merged := BNode(make([]byte, BTREE_PAGE_SIZE))
 		nodeMerge(merged, updated, sibling)
 		this.delNode(node.getPtr(idx + 1))
-		nodeReplace2Kid(newNode, node, idx, this.newNode(merged), merged.getKey(0))
+		this.nodeReplace2Kid(newNode, node, idx, this.newNode(merged), merged.getKey(0))
 	case updated.nKeys() == 0:
 		Assertf(node.nKeys() == 1 && idx == 0, "") // 1 empty child but no sibling
 		newNode.setHeader(BNODE_NODE, 0)           // the parent becomes empty too

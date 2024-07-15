@@ -25,7 +25,7 @@ func TestBnode(t *testing.T) {
 	assert.Equal(t, keyCount, bnode.nKeys(), "should have %d keys, %d got", keyCount, bnode.nKeys())
 
 	for i := uint16(0); i < keyCount; i++ {
-		nodeAppendKV(bnode, i, 1, keyOf(i), valueOf(i))
+		nodeAppendKVOrPtr(bnode, i, 1, keyOf(i), valueOf(i))
 	}
 
 	for i := uint16(0); i < bnode.nKeys(); i++ {
@@ -39,7 +39,7 @@ func TestBnode(t *testing.T) {
 
 	newNode.setHeader(BNODE_LEAF, keyCount)
 
-	nodeAppendRange(newNode, bnode, 0, 0, keyCount)
+	nodeAppendKVOrPtrRange(newNode, bnode, 0, 0, keyCount)
 
 	//assert.Equal(t, bnode, newNode)
 
@@ -58,7 +58,7 @@ func TestBnode(t *testing.T) {
 
 			//assert.Equal(t, bnode.getPtr(i), newNode.getPtr(i))
 			if i >= 1 {
-				assert.Equal(t, bnode.offsetPos(i), newNode.offsetPos(i))
+				assert.Equal(t, bnode._offsetPos(i), newNode._offsetPos(i))
 			}
 		}
 	})
@@ -148,6 +148,65 @@ func TestBnode(t *testing.T) {
 			assert.Equal(t, i, idx)
 		}
 	})
+
+	t.Run("test node split 2 / split 3", func(t *testing.T) {
+		bigNode := make(BNode, BTREE_PAGE_SIZE*2)
+		bigNode.setHeader(BNODE_LEAF, 191)
+		for i := uint16(0); i < bigNode.nKeys(); i++ {
+			nodeAppendKVOrPtr(bigNode, i, 0, keyOf(i), valueOf(i))
+		}
+		// must bigger than one page
+		assert.Greater(t, bigNode.nBytes(), uint16(BTREE_PAGE_SIZE))
+
+		leftNode := make(BNode, BTREE_PAGE_SIZE)
+		rightNode := make(BNode, BTREE_PAGE_SIZE)
+		nodeSplit2(leftNode, rightNode, bigNode)
+
+		nextKey := uint16(0)
+
+		getNextKeys := func() []byte {
+			key := keyOf(nextKey)
+			nextKey++
+			return key
+		}
+
+		t.Logf("bigNode has %d keys, after spliting left node has %d keys and right node has %d keys",
+			bigNode.nKeys(), leftNode.nKeys(), rightNode.nKeys())
+		for i := uint16(0); i < leftNode.nKeys(); i++ {
+			assert.Equal(t, leftNode.getKey(i), getNextKeys())
+		}
+
+		for i := uint16(0); i < rightNode.nKeys(); i++ {
+			assert.Equal(t, rightNode.getKey(i), getNextKeys())
+		}
+
+		n, nodes := nodeSplit3(bigNode)
+		assert.Equal(t, n, uint16(2))
+		assert.Nil(t, nodes[2])
+
+		assert.Equal(t, leftNode, nodes[0])
+		assert.Equal(t, rightNode, nodes[1])
+
+		superBigNode := make(BNode, BTREE_PAGE_SIZE*3)
+		superBigNode.setHeader(BNODE_LEAF, 256)
+
+		for i := uint16(0); i < superBigNode.nKeys(); i++ {
+			nodeAppendKVOrPtr(superBigNode, i, 0, keyOf(i), valueOf(i))
+		}
+
+		n, nodes = nodeSplit3(superBigNode)
+		assert.Equal(t, n, uint16(3))
+		t.Logf("suprtBigNode has %d keys, after spliting there are 3 nodes with nkeys: %v",
+			superBigNode.nKeys(), []uint16{nodes[0].nKeys(), nodes[1].nKeys(), nodes[2].nKeys()})
+		// reset next key
+		nextKey = 0
+		for _, node := range nodes {
+			assert.NotNil(t, node)
+			for i := uint16(0); i < node.nKeys(); i++ {
+				assert.Equal(t, node.getKey(i), getNextKeys())
+			}
+		}
+	})
 }
 
 func BenchmarkNode(b *testing.B) {
@@ -155,14 +214,14 @@ func BenchmarkNode(b *testing.B) {
 	const keyCount uint16 = 70
 	bnode.setHeader(BNODE_LEAF, keyCount)
 	for i := uint16(0); i < keyCount; i++ {
-		nodeAppendKV(bnode, i, 1, keyOf(i), valueOf(i))
+		nodeAppendKVOrPtr(bnode, i, 1, keyOf(i), valueOf(i))
 	}
 
-	b.Run("benchmark nodeAppendRange", func(b *testing.B) {
+	b.Run("benchmark nodeAppendKVOrPtrRange", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			newNode := make(BNode, BTREE_PAGE_SIZE)
 			newNode.setHeader(BNODE_LEAF, keyCount)
-			nodeAppendRange(newNode, bnode, 0, 0, keyCount)
+			nodeAppendKVOrPtrRange(newNode, bnode, 0, 0, keyCount)
 		}
 	})
 

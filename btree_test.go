@@ -19,8 +19,8 @@ func TestBtree(t *testing.T) {
 		rightNode.setHeader(BNODE_LEAF, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			nodeAppendKV(leftNode, i, 1, keyOf(i), valueOf(i))
-			nodeAppendKV(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
+			nodeAppendKVOrPtr(leftNode, i, 1, keyOf(i), valueOf(i))
+			nodeAppendKVOrPtr(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
 		}
 		newNode := make(BNode, BTREE_PAGE_SIZE)
 		nodeMerge(newNode, leftNode, rightNode)
@@ -98,8 +98,8 @@ func BenchmarkBtree(b *testing.B) {
 		rightNode.setHeader(BNODE_LEAF, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			nodeAppendKV(leftNode, i, 1, keyOf(i), valueOf(i))
-			nodeAppendKV(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
+			nodeAppendKVOrPtr(leftNode, i, 1, keyOf(i), valueOf(i))
+			nodeAppendKVOrPtr(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
 		}
 
 		b.ResetTimer()
@@ -166,14 +166,14 @@ func newC() *C {
 				return node
 			},
 			newNode: func(node []byte) uint64 {
-				Assert(BNode(node).nBytes() <= BTREE_PAGE_SIZE, "assert failed: new node over size")
+				Assert(BNode(node).nBytes() <= BTREE_PAGE_SIZE, "assertion failed: new node over size")
 				ptr := uint64(uintptr(unsafe.Pointer(&node[0])))
-				Assert(pages[ptr] == nil, "assert failed: page should not exists")
+				Assert(pages[ptr] == nil, "assertion failed: page should not exists")
 				pages[ptr] = node
 				return ptr
 			},
 			delNode: func(ptr uint64) {
-				Assert(pages[ptr] != nil, "assert failed: delete page not exists")
+				Assert(pages[ptr] != nil, "assertion failed: delete page not exists")
 				delete(pages, ptr)
 			},
 		},
@@ -213,9 +213,9 @@ func (c *C) getUtil(node BNode, key []byte) ([]byte, bool) {
 		}
 		return nil, false
 	default:
-		Assertf(false, "assert failed: unknown node type %d", node.bType())
+		Assertf(false, "assertion failed: unknown node type %d", node.bType())
 	}
-	Assertf(false, "assert failed: never happend here getUtil.")
+	Assertf(false, "assertion failed: never happend here getUtil.")
 	return nil, false
 }
 
