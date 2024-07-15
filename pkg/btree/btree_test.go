@@ -1,49 +1,55 @@
-package dbolt
+package btree
 
 import (
-	"bytes"
 	"fmt"
+	"math/rand"
 	"testing"
 	"unsafe"
 
+	"github.com/dashjay/dbolt/pkg/bnode"
+	"github.com/dashjay/dbolt/pkg/constants"
+	"github.com/dashjay/dbolt/pkg/utils"
 	"github.com/schollz/progressbar/v3"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBtree(t *testing.T) {
-	const keyCount uint16 = 20
 	t.Run("test node merge", func(t *testing.T) {
-		leftNode := make(BNode, BTREE_PAGE_SIZE)
-		leftNode.setHeader(BNODE_LEAF, keyCount)
-		rightNode := make(BNode, BTREE_PAGE_SIZE)
-		rightNode.setHeader(BNODE_LEAF, keyCount)
+		const keyCount uint16 = 20
+		leftNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		leftNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
+		rightNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		rightNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			nodeAppendKVOrPtr(leftNode, i, 1, keyOf(i), valueOf(i))
-			nodeAppendKVOrPtr(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
+			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(i), utils.GenTestValue(i))
+			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(i+keyCount), utils.GenTestValue(i+keyCount))
 		}
-		newNode := make(BNode, BTREE_PAGE_SIZE)
+		newNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
 		nodeMerge(newNode, leftNode, rightNode)
 
-		assert.Equal(t, 2*keyCount, newNode.nKeys())
+		assert.Equal(t, 2*keyCount, newNode.KeyCounts())
 
 		for i := uint16(0); i < keyCount; i++ {
-			assert.Equal(t, keyOf(i), newNode.getKey(i))
-			assert.Equal(t, valueOf(i), newNode.getVal(i))
-			assert.Equal(t, keyOf(i+keyCount), newNode.getKey(i+keyCount))
-			assert.Equal(t, valueOf(i+keyCount), newNode.getVal(i+keyCount))
+			assert.Equal(t, utils.GenTestKey(i), newNode.GetKey(i))
+			assert.Equal(t, utils.GenTestValue(i), newNode.GetVal(i))
+			assert.Equal(t, utils.GenTestKey(i+keyCount), newNode.GetKey(i+keyCount))
+			assert.Equal(t, utils.GenTestValue(i+keyCount), newNode.GetVal(i+keyCount))
 		}
 	})
 
 	ctree := newC()
 
 	for i := uint16(0); i < 4096; i++ {
-		ctree.add(keyOf(i), valueOf(i))
+		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
+
+		// add same key again !
+		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 	}
 
 	idx := uint16(0)
 	next := func() (key []byte, val []byte) {
-		a, b := keyOf(idx), valueOf(idx)
+		a, b := utils.GenTestKey(idx), utils.GenTestValue(idx)
 		idx++
 		return a, b
 	}
@@ -60,12 +66,12 @@ func TestBtree(t *testing.T) {
 	})
 
 	for i := uint16(0); i < 30; i++ {
-		assert.True(t, ctree.del(keyOf(i)))
+		assert.True(t, ctree.del(utils.GenTestKey(i)))
 	}
 
 	// delete key not exists
 	for i := uint16(0); i < 30; i++ {
-		assert.False(t, ctree.del(keyOf(i)))
+		assert.False(t, ctree.del(utils.GenTestKey(i)))
 	}
 
 	idx = 30
@@ -80,30 +86,45 @@ func TestBtree(t *testing.T) {
 		assert.Equal(t, expectVal, val)
 	})
 
-	//t.Logf("%s", hex.Dump(ctree.tree.getNode(ctree.tree.root)))
-
 	for i := uint16(1000); i < 4096; i++ {
-		val, ok := ctree.get(keyOf(i))
+		val, ok := ctree.get(utils.GenTestKey(i))
 		assert.True(t, ok)
-		assert.Equal(t, valueOf(i), val)
+		assert.Equal(t, utils.GenTestValue(i), val)
+	}
+
+	// random delete
+	for i := 1; i < 4096; i++ {
+		key := utils.GenTestKey(uint16(rand.Intn(i)))
+		_, exists := ctree.get(key)
+		deleted := ctree.del(key)
+		assert.True(t, exists == deleted)
+	}
+
+	// delete all left keys
+	var leftKeys [][]byte
+	ctree.traversal(func(key []byte, val []byte) {
+		leftKeys = append(leftKeys, append([]byte(nil), key...))
+	})
+	for _, key := range leftKeys {
+		assert.True(t, ctree.del(key))
 	}
 }
 
 func BenchmarkBtree(b *testing.B) {
 	const keyCount uint16 = 30
 	b.Run("benchmark node merge", func(b *testing.B) {
-		leftNode := make(BNode, BTREE_PAGE_SIZE)
-		leftNode.setHeader(BNODE_LEAF, keyCount)
-		rightNode := make(BNode, BTREE_PAGE_SIZE)
-		rightNode.setHeader(BNODE_LEAF, keyCount)
+		leftNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		leftNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
+		rightNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		rightNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			nodeAppendKVOrPtr(leftNode, i, 1, keyOf(i), valueOf(i))
-			nodeAppendKVOrPtr(rightNode, i, 1, keyOf(i+keyCount), valueOf(i+keyCount))
+			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(i), utils.GenTestValue(i))
+			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(i+keyCount), utils.GenTestValue(i+keyCount))
 		}
 
 		b.ResetTimer()
-		newNode := make(BNode, BTREE_PAGE_SIZE)
+		newNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
 		for i := 0; i < b.N; i++ {
 			nodeMerge(newNode, leftNode, rightNode)
 		}
@@ -112,68 +133,69 @@ func BenchmarkBtree(b *testing.B) {
 	b.Run("benchmark tree add", func(b *testing.B) {
 		ctree := newC()
 		for i := 0; i < b.N; i++ {
-			idx := uint16(i % BTREE_PAGE_SIZE)
-			ctree.add(keyOf(idx), valueOf(idx))
+			idx := uint16(i % constants.BTREE_PAGE_SIZE)
+			ctree.add(utils.GenTestKey(idx), utils.GenTestValue(idx))
 		}
 	})
 
 	ctree := newC()
 	for i := uint16(0); i < 4096; i++ {
-		ctree.add(keyOf(i), valueOf(i))
+		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 	}
 
 	b.Run("benchmark tree delete", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			idx := uint16(i % BTREE_PAGE_SIZE)
-			ctree.del(keyOf(idx))
+			idx := uint16(i % constants.BTREE_PAGE_SIZE)
+			ctree.del(utils.GenTestKey(idx))
 		}
 	})
 
 	// recover
 	for i := uint16(0); i < 4096; i++ {
-		ctree.add(keyOf(i), valueOf(i))
+		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 	}
 
 	b.Run("benchmark tree get", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = ctree.get(keyOf(uint16(i % 8192)))
+			_, _ = ctree.get(utils.GenTestKey(uint16(i % 8192)))
 		}
 	})
 
 	b.Run("benchmark tree traversal", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			ctree.traversal(func(key []byte, val []byte) {
-				// do nothing
+				_ = key
+				_ = val
 			})
 		}
 	})
 }
 
 type C struct {
-	tree  BTree
-	ref   map[string]string // the reference data
-	pages map[uint64]BNode  // in-memory pages
+	tree  Tree
+	ref   map[string]string     // the reference data
+	pages map[uint64]bnode.Node // in-memory pages
 }
 
 func newC() *C {
-	pages := map[uint64]BNode{}
+	pages := map[uint64]bnode.Node{}
 	return &C{
-		tree: BTree{
+		tree: Tree{
 			getNode: func(ptr uint64) []byte {
 				node, ok := pages[ptr]
-				Assert(ok, "get node not exists")
+				utils.Assert(ok, "get node not exists")
 				return node
 			},
 			newNode: func(node []byte) uint64 {
-				Assert(BNode(node).nBytes() <= BTREE_PAGE_SIZE, "assertion failed: new node over size")
+				utils.Assert(bnode.Node(node).SizeBytes() <= constants.BTREE_PAGE_SIZE, "assertion failed: new node over size")
 				ptr := uint64(uintptr(unsafe.Pointer(&node[0])))
-				Assert(pages[ptr] == nil, "assertion failed: page should not exists")
+				utils.Assert(pages[ptr] == nil, "assertion failed: page should not exists")
 				pages[ptr] = node
 				return ptr
 			},
 			delNode: func(ptr uint64) {
-				Assert(pages[ptr] != nil, "assertion failed: delete page not exists")
+				utils.Assert(pages[ptr] != nil, "assertion failed: delete page not exists")
 				delete(pages, ptr)
 			},
 		},
@@ -193,55 +215,26 @@ func (c *C) del(key []byte) bool {
 	return deleted
 }
 
-// getUtil return value and if found
-func (c *C) getUtil(node BNode, key []byte) ([]byte, bool) {
-	if node == nil {
-		return nil, false
-	}
-	switch node.bType() {
-	case BNODE_NODE:
-		idx := nodeLookupLEBinary(node, key)
-		n := bytes.Compare(node.getKey(idx), key)
-		if n <= 0 {
-			return c.getUtil(c.tree.getNode(node.getPtr(idx)), key)
-		}
-		return c.getUtil(c.tree.getNode(node.getPtr(idx-1)), key)
-	case BNODE_LEAF:
-		idx := nodeLookupLEBinary(node, key)
-		if bytes.Equal(node.getKey(idx), key) {
-			return node.getVal(idx), true
-		}
-		return nil, false
-	default:
-		Assertf(false, "assertion failed: unknown node type %d", node.bType())
-	}
-	Assertf(false, "assertion failed: never happend here getUtil.")
-	return nil, false
-}
-
 func (c *C) get(key []byte) ([]byte, bool) {
-	if c.tree.root == 0 {
-		return nil, false
-	}
-	return c.getUtil(c.tree.getNode(c.tree.root), key)
+	return c.tree.Get(key)
 }
 
-func (c *C) traversalUtil(node BNode, fn func(key []byte, val []byte)) {
+func (c *C) traversalUtil(node bnode.Node, fn func(key []byte, val []byte)) {
 	if node == nil {
 		return
 	}
-	switch node.bType() {
-	case BNODE_NODE:
-		for i := uint16(0); i < node.nKeys(); i++ {
-			subNode := c.tree.getNode(node.getPtr(i))
+	switch node.Type() {
+	case bnode.NodeTypeNode:
+		for i := uint16(0); i < node.KeyCounts(); i++ {
+			subNode := c.tree.getNode(node.GetPtr(i))
 			c.traversalUtil(subNode, fn)
 		}
-	case BNODE_LEAF:
-		for i := uint16(0); i < node.nKeys(); i++ {
-			fn(node.getKey(i), node.getVal(i))
+	case bnode.NodeTypeLeaf:
+		for i := uint16(0); i < node.KeyCounts(); i++ {
+			fn(node.GetKey(i), node.GetVal(i))
 		}
 	default:
-		Assertf(false, "unknown node type: %v", node.bType())
+		utils.Assertf(false, "unknown node type: %v", node.Type())
 	}
 }
 
@@ -249,8 +242,18 @@ func (c *C) traversal(fn func(key []byte, val []byte)) {
 	c.traversalUtil(c.tree.getNode(c.tree.root), fn)
 }
 
-func TestCTree(t *testing.T) {
+func TestBTreeWithProgressingBar(t *testing.T) {
 	cTree := newC()
+
+	// for coverage (get & delete on empty tree
+	{
+		val, exists := cTree.get([]byte(nil))
+		assert.Nil(t, val)
+		assert.False(t, exists)
+		deleted := cTree.del([]byte(nil))
+		assert.False(t, deleted)
+	}
+
 	KeyOfInt := func(i int) []byte {
 		return []byte(fmt.Sprintf("key-%08d", i))
 	}
@@ -271,6 +274,9 @@ func TestCTree(t *testing.T) {
 		val, exists := cTree.get(KeyOfInt(i))
 		assert.True(t, exists)
 		assert.Equal(t, val, ValueOfInt(i))
+		val, exists = cTree.get(append(KeyOfInt(i), []byte("not-exists")...))
+		assert.False(t, exists)
+		assert.Nil(t, val)
 	}
 
 	idx := 0
