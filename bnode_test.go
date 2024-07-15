@@ -58,7 +58,7 @@ func TestBnode(t *testing.T) {
 
 			//assert.Equal(t, bnode.getPtr(i), newNode.getPtr(i))
 			if i >= 1 {
-				assert.Equal(t, bnode.offsetPos(i), newNode.offsetPos(i))
+				assert.Equal(t, bnode._offsetPos(i), newNode._offsetPos(i))
 			}
 		}
 	})
@@ -146,6 +146,65 @@ func TestBnode(t *testing.T) {
 		for i := uint16(1); i < bnode.nKeys(); i++ {
 			idx := nodeLookupLEBinary(bnode, keyOf(i))
 			assert.Equal(t, i, idx)
+		}
+	})
+
+	t.Run("test node split 2 / split 3", func(t *testing.T) {
+		bigNode := make(BNode, BTREE_PAGE_SIZE*2)
+		bigNode.setHeader(BNODE_LEAF, 191)
+		for i := uint16(0); i < bigNode.nKeys(); i++ {
+			nodeAppendKV(bigNode, i, 0, keyOf(i), valueOf(i))
+		}
+		// must bigger than one page
+		assert.Greater(t, bigNode.nBytes(), uint16(BTREE_PAGE_SIZE))
+
+		leftNode := make(BNode, BTREE_PAGE_SIZE)
+		rightNode := make(BNode, BTREE_PAGE_SIZE)
+		nodeSplit2(leftNode, rightNode, bigNode)
+
+		nextKey := uint16(0)
+
+		getNextKeys := func() []byte {
+			key := keyOf(nextKey)
+			nextKey++
+			return key
+		}
+
+		t.Logf("bigNode has %d keys, after spliting left node has %d keys and right node has %d keys",
+			bigNode.nKeys(), leftNode.nKeys(), rightNode.nKeys())
+		for i := uint16(0); i < leftNode.nKeys(); i++ {
+			assert.Equal(t, leftNode.getKey(i), getNextKeys())
+		}
+
+		for i := uint16(0); i < rightNode.nKeys(); i++ {
+			assert.Equal(t, rightNode.getKey(i), getNextKeys())
+		}
+
+		n, nodes := nodeSplit3(bigNode)
+		assert.Equal(t, n, uint16(2))
+		assert.Nil(t, nodes[2])
+
+		assert.Equal(t, leftNode, nodes[0])
+		assert.Equal(t, rightNode, nodes[1])
+
+		superBigNode := make(BNode, BTREE_PAGE_SIZE*3)
+		superBigNode.setHeader(BNODE_LEAF, 256)
+
+		for i := uint16(0); i < superBigNode.nKeys(); i++ {
+			nodeAppendKV(superBigNode, i, 0, keyOf(i), valueOf(i))
+		}
+
+		n, nodes = nodeSplit3(superBigNode)
+		assert.Equal(t, n, uint16(3))
+		t.Logf("suprtBigNode has %d keys, after spliting there are 3 nodes with nkeys: %v",
+			superBigNode.nKeys(), []uint16{nodes[0].nKeys(), nodes[1].nKeys(), nodes[2].nKeys()})
+		// reset next key
+		nextKey = 0
+		for _, node := range nodes {
+			assert.NotNil(t, node)
+			for i := uint16(0); i < node.nKeys(); i++ {
+				assert.Equal(t, node.getKey(i), getNextKeys())
+			}
 		}
 	})
 }

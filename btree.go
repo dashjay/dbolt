@@ -13,7 +13,7 @@ type BTree struct {
 	delNode func(uint64)        // deallocate a page
 }
 
-// replace a link with one or multiple links
+// nodeReplaceKidN replace a link with one or multiple links
 func (this *BTree) nodeReplaceKidN(newNode BNode, oldNode BNode, idx uint16, kids ...BNode,
 ) {
 	inc := uint16(len(kids))
@@ -26,6 +26,7 @@ func (this *BTree) nodeReplaceKidN(newNode BNode, oldNode BNode, idx uint16, kid
 	nodeAppendRange(newNode, oldNode, idx+inc, idx+1, oldNode.nKeys()-(idx+1))
 }
 
+// nodeReplace2Kid is used for deleting
 func nodeReplace2Kid(
 	newNode BNode, oldNode BNode, idx uint16, ptr uint64, key []byte,
 ) {
@@ -78,7 +79,7 @@ func (this *BTree) treeInsert(node BNode, key []byte, val []byte) BNode {
 		// internal node, insert it to a kid node.
 		this.nodeInsert(newNode, node, idx, key, val)
 	default:
-		Assertf(false, "assert failed: unknown nodeType %d", node.bType())
+		Assertf(false, "assertion failed: unknown nodeType %d", node.bType())
 	}
 	return newNode
 }
@@ -155,7 +156,7 @@ func (this *BTree) shouldMerge(node BNode, idx uint16, updated BNode) (int, BNod
 
 func nodeMerge(newNode BNode, leftNode BNode, rightNode BNode) {
 	mergedSize := leftNode.nBytes() + rightNode.nBytes() - HEADER
-	Assertf(mergedSize < BTREE_PAGE_SIZE, "assert failed: node merged size is too large: %d", mergedSize)
+	Assertf(mergedSize < BTREE_PAGE_SIZE, "assertion failed: node merged size is too large: %d", mergedSize)
 
 	newNode.setHeader(leftNode.bType(), leftNode.nKeys()+rightNode.nKeys())
 	nodeAppendRange(newNode, leftNode, 0, 0, leftNode.nKeys())
@@ -187,7 +188,7 @@ func (this *BTree) treeDelete(node BNode, key []byte) BNode {
 		// internal node, insert it to a kid node.
 		//this.nodeInsert(newNode, node, idx, key, val)
 	default:
-		Assertf(false, "assert failed: unknown nodeType %d", node.bType())
+		Assertf(false, "assertion failed: unknown nodeType %d", node.bType())
 	}
 	return newNode
 }
