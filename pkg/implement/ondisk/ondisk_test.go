@@ -1,8 +1,9 @@
 package ondisk
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
 	"sort"
 	"testing"
@@ -47,14 +48,18 @@ func (d *D) dispose() {
 	os.Remove("test.db")
 }
 
-func (d *D) add(key string, val string) {
-	utils.Assertf(d.db.Set([]byte(key), []byte(val)) == nil, "add error")
-	d.ref[key] = val
+func (d *D) add(key []byte, val []byte) {
+	utils.Assertf(d.db.Set(key, val) == nil, "add error")
+	d.ref[string(key)] = string(val)
 }
 
-func (d *D) del(key string) bool {
-	delete(d.ref, key)
-	deleted, err := d.db.Del([]byte(key))
+func (d *D) get(key []byte) ([]byte, bool) {
+	return d.db.Get(key)
+}
+
+func (d *D) del(key []byte) bool {
+	delete(d.ref, string(key))
+	deleted, err := d.db.Del(key)
 	utils.Assert(err == nil, "")
 	return deleted
 }
@@ -177,13 +182,13 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	c := newD()
 	defer c.dispose()
 
-	c.add("k", "v")
+	c.add([]byte("k"), []byte("v"))
 	c.verify(t)
 
 	// insert
 	for i := 0; i < 25000; i++ {
-		key := fmt.Sprintf("key%d", utils.Murmur32(uint32(i)))
-		val := fmt.Sprintf("vvv%d", utils.Murmur32(uint32(-i)))
+		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
+		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(-i))))
 		c.add(key, val)
 		if i < 2000 {
 			c.verify(t)
@@ -198,7 +203,7 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 
 	// del
 	for i := 2000; i < 25000; i++ {
-		key := fmt.Sprintf("key%d", utils.Murmur32(uint32(i)))
+		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		assert.True(t, c.del(key))
 	}
 	c.verify(t)
@@ -210,17 +215,17 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 
 	// overwrite
 	for i := 0; i < 2000; i++ {
-		key := fmt.Sprintf("key%d", utils.Murmur32(uint32(i)))
-		val := fmt.Sprintf("vvv%d", utils.Murmur32(uint32(+i)))
+		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
+		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(+i))))
 		c.add(key, val)
 		c.verify(t)
 	}
 
-	assert.False(t, c.del("kk"))
+	assert.False(t, c.del([]byte("kk")))
 
 	// remove all
 	for i := 0; i < 2000; i++ {
-		key := fmt.Sprintf("key%d", utils.Murmur32(uint32(i)))
+		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		assert.True(t, c.del(key))
 		c.verify(t)
 	}
@@ -229,9 +234,9 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 		c.verify(t)
 	}
 
-	c.add("k", "v2")
+	c.add([]byte("k"), []byte("v2"))
 	c.verify(t)
-	c.del("k")
+	c.del([]byte("k"))
 	c.verify(t)
 }
 
@@ -310,7 +315,7 @@ func TestKVRandLength(t *testing.T) {
 		rand.Read(key)
 		val := make([]byte, vlen)
 		rand.Read(val)
-		c.add(string(key), string(val))
+		c.add(key, val)
 		c.verify(t)
 	}
 }
@@ -337,10 +342,71 @@ func TestKVIncLength(t *testing.T) {
 		}
 		for i := 0; i < size; i++ {
 			rand.Read(key)
-			c.add(string(key), string(val))
+			c.add(key, val)
 		}
 		c.verify(t)
 
 		c.dispose()
+	}
+}
+
+func BenchmarkOnDisk(b *testing.B) {
+	var runOnKeySize = []uint64{64, 512, constants.BTREE_MAX_KEY_SIZE}
+	var runOnValueSize = []uint64{256, 1024, constants.BTREE_MAX_VAL_SIZE}
+
+	for _, keySize := range runOnKeySize {
+		for _, valueSize := range runOnValueSize {
+			d := newD()
+			key := make([]byte, keySize)
+			value := make([]byte, valueSize)
+			keysRef := make([][]byte, 0)
+			b.Run(fmt.Sprintf(`add-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					rand.Read(key)
+					rand.Read(value)
+					keysRef = append(keysRef, bytes.Clone(key))
+					b.StartTimer()
+					d.add(key, value)
+					b.StopTimer()
+				}
+			})
+
+			b.Run(fmt.Sprintf(`get-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					key := keysRef[i%len(keysRef)]
+					_, _ = d.get(key)
+				}
+			})
+
+			b.Run(fmt.Sprintf(`get-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					rand.Read(key)
+					b.StartTimer()
+					_, _ = d.get(key)
+					b.StopTimer()
+				}
+			})
+
+			b.Run(fmt.Sprintf(`delete-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					key := keysRef[i%len(keysRef)]
+					_ = d.del(key)
+				}
+			})
+
+			b.Run(fmt.Sprintf(`delete-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					rand.Read(key)
+					b.StartTimer()
+					_ = d.del(key)
+					b.StopTimer()
+				}
+			})
+		}
 	}
 }
