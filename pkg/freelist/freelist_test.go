@@ -21,26 +21,26 @@ func newL() *L {
 	pages := map[uint64][]byte{}
 	pages[1] = utils.GetPage() // initial node
 	nextPageID := uint64(1000) // [1000, 10000)
+
+	getNode := func(ptr uint64) []byte {
+		utils.Assertf(pages[ptr] != nil, "pages[%d] should not be nil", ptr)
+		return pages[ptr]
+	}
+	newNode := func(node []byte) uint64 {
+		utils.Assertf(pages[nextPageID] == nil, "pages[%d] should not be nil", nextPageID)
+		current := nextPageID
+		nextPageID++
+		pages[current] = node
+		return current
+	}
+	setNode := func(ptr uint64) []byte {
+		utils.Assertf(pages[ptr] != nil, "pages[%d] should not be nil", ptr)
+		return pages[ptr]
+	}
+	list := NewFreeList(getNode, newNode, setNode)
+	list.SetMeta(1, 0, 1, 0)
 	return &L{
-		free: List{
-			getNode: func(ptr uint64) []byte {
-				utils.Assertf(pages[ptr] != nil, "pages[%d] should not be nil", ptr)
-				return pages[ptr]
-			},
-			setNode: func(ptr uint64) []byte {
-				utils.Assertf(pages[ptr] != nil, "pages[%d] should not be nil", ptr)
-				return pages[ptr]
-			},
-			newNode: func(node []byte) uint64 {
-				utils.Assertf(pages[nextPageID] == nil, "pages[%d] should not be nil", nextPageID)
-				current := nextPageID
-				nextPageID++
-				pages[current] = node
-				return current
-			},
-			headPage: 1, // initial node
-			tailPage: 1,
-		},
+		free:  list,
 		pages: pages,
 	}
 }
@@ -93,6 +93,7 @@ func (l *L) verify() {
 
 func TestGetFromEmptyList(t *testing.T) {
 	l := newL()
+	l.free.GetMeta()
 	id := l.pop()
 	assert.Equal(t, id, uint64(0))
 	l.verify()

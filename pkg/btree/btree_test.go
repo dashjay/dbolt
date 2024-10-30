@@ -108,6 +108,8 @@ func TestBtree(t *testing.T) {
 	for _, key := range leftKeys {
 		assert.True(t, ctree.del(key))
 	}
+
+	ctree.tree.DebugGetNode(ctree.tree.Root())
 }
 
 func BenchmarkBtree(b *testing.B) {
@@ -180,25 +182,26 @@ type C struct {
 
 func newC() *C {
 	pages := map[uint64]bnode.Node{}
+	getNode := func(ptr uint64) []byte {
+		node, ok := pages[ptr]
+		utils.Assert(ok, "get node not exists")
+		return node
+	}
+	newNode := func(node []byte) uint64 {
+		utils.Assert(bnode.Node(node).SizeBytes() <= constants.BTREE_PAGE_SIZE, "assertion failed: new node over size")
+		ptr := uint64(uintptr(unsafe.Pointer(&node[0])))
+		utils.Assert(pages[ptr] == nil, "assertion failed: page should not exists")
+		pages[ptr] = node
+		return ptr
+	}
+	delNode := func(ptr uint64) {
+		utils.Assert(pages[ptr] != nil, "assertion failed: delete page not exists")
+		delete(pages, ptr)
+	}
+	tree := NewTree(getNode, newNode, delNode)
+	tree.SetRoot(0)
 	return &C{
-		tree: Tree{
-			getNode: func(ptr uint64) []byte {
-				node, ok := pages[ptr]
-				utils.Assert(ok, "get node not exists")
-				return node
-			},
-			newNode: func(node []byte) uint64 {
-				utils.Assert(bnode.Node(node).SizeBytes() <= constants.BTREE_PAGE_SIZE, "assertion failed: new node over size")
-				ptr := uint64(uintptr(unsafe.Pointer(&node[0])))
-				utils.Assert(pages[ptr] == nil, "assertion failed: page should not exists")
-				pages[ptr] = node
-				return ptr
-			},
-			delNode: func(ptr uint64) {
-				utils.Assert(pages[ptr] != nil, "assertion failed: delete page not exists")
-				delete(pages, ptr)
-			},
-		},
+		tree:  tree,
 		ref:   map[string]string{},
 		pages: pages,
 	}
