@@ -350,9 +350,26 @@ func TestKVIncLength(t *testing.T) {
 	}
 }
 
+func BenchmarkSet(b *testing.B) {
+	const keySize, valueSize = 64, 256
+	d := newD()
+	key := make([]byte, keySize)
+	value := make([]byte, valueSize)
+	keysRef := make([][]byte, 0)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rand.Read(key)
+		rand.Read(value)
+		keysRef = append(keysRef, bytes.Clone(key))
+		b.StartTimer()
+		d.add(key, value)
+		b.StopTimer()
+	}
+}
+
 func BenchmarkOnDisk(b *testing.B) {
-	var runOnKeySize = []uint64{64, 512, constants.BTREE_MAX_KEY_SIZE}
-	var runOnValueSize = []uint64{256, 1024, constants.BTREE_MAX_VAL_SIZE}
+	var runOnKeySize = []uint64{64 /*512, constants.BTREE_MAX_KEY_SIZE*/}
+	var runOnValueSize = []uint64{256 /*1024, constants.BTREE_MAX_VAL_SIZE*/}
 
 	for _, keySize := range runOnKeySize {
 		for _, valueSize := range runOnValueSize {
