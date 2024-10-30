@@ -41,7 +41,8 @@ func (this *Tree) SetRoot(in uint64) {
 func (this *Tree) Insert(key []byte, val []byte) {
 	if this.root == 0 {
 		// create the first node (leaf type)
-		rootBNode := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+		//rootBNode := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+		rootBNode := bnode.Node(utils.GetPage())
 		rootBNode.SetHeader(bnode.NodeTypeLeaf, 2)
 		// a dummy key, this makes this tree cover the whole key space.
 		// thus a lookup can always find a containing node.
@@ -57,7 +58,7 @@ func (this *Tree) Insert(key []byte, val []byte) {
 	this.delNode(this.root)
 	if nSplit > 1 {
 		// the root was split, add a new level.
-		root := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+		root := bnode.Node(utils.GetPage())
 		// the root will become a node type
 		// after this, size of bnode will become the size of sub node instead of key nums
 		root.SetHeader(bnode.NodeTypeNode, nSplit)
@@ -227,7 +228,7 @@ func (this *Tree) _treeGet(node bnode.Node, key []byte) ([]byte, bool) {
 // and merge the result node with sibling
 func (this *Tree) _treeDelete(node bnode.Node, key []byte) bnode.Node {
 	// the result node.
-	newNode := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	newNode := bnode.Node(utils.GetPage())
 
 	// which key should be deleted
 	idx := bnode.NodeLookupLE(node, key)
@@ -261,17 +262,17 @@ func (this *Tree) _nodeDelete(node bnode.Node, idx uint16, key []byte) bnode.Nod
 	}
 	this.delNode(kptr)
 
-	newNode := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	newNode := bnode.Node(utils.GetPage())
 	// assertCheckFreelist for merging
 	mergeDir, sibling := this.shouldMerge(node, idx, updated)
 	switch {
 	case mergeDir < 0: // left
-		merged := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+		merged := bnode.Node(utils.GetPage())
 		nodeMerge(merged, sibling, updated)
 		this.delNode(node.GetPtr(idx - 1))
 		this.nodeReplace2Kid(newNode, node, idx-1, this.newNode(merged), merged.GetKey(0))
 	case mergeDir > 0: // right
-		merged := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
+		merged := bnode.Node(utils.GetPage())
 		nodeMerge(merged, updated, sibling)
 		this.delNode(node.GetPtr(idx + 1))
 		this.nodeReplace2Kid(newNode, node, idx, this.newNode(merged), merged.GetKey(0))

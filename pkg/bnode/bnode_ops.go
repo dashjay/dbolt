@@ -198,14 +198,17 @@ func NodeSplit3(old Node) (uint16, [3]Node) {
 		return 1, [3]Node{old} // not split
 	}
 	left := Node(make([]byte, 2*constants.BTREE_PAGE_SIZE)) // might be split later
-	right := Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	// right := Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	right := Node(utils.GetPage())
 	nodeSplit2(left, right, old)
 	if left.SizeBytes() <= constants.BTREE_PAGE_SIZE {
 		left = left[:constants.BTREE_PAGE_SIZE]
 		return 2, [3]Node{left, right} // 2 nodes
 	}
-	leftleft := Node(make([]byte, constants.BTREE_PAGE_SIZE))
-	middle := Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	//leftleft := Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	//middle := Node(make([]byte, constants.BTREE_PAGE_SIZE))
+	leftleft := Node(utils.GetPage())
+	middle := Node(utils.GetPage())
 	nodeSplit2(leftleft, middle, left)
 	utils.Assertf(leftleft.SizeBytes() <= constants.BTREE_PAGE_SIZE,
 		"assertion failed: leftleft.size %d should less thant page size %d", leftleft.SizeBytes(), constants.BTREE_PAGE_SIZE)

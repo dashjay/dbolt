@@ -87,7 +87,8 @@ func (db *KV) pageWrite(ptr uint64) []byte {
 	if node, ok := db.page.updates[ptr]; ok {
 		return node // pending update
 	}
-	node := make([]byte, constants.BTREE_PAGE_SIZE)
+	//node := make([]byte, constants.BTREE_PAGE_SIZE)
+	node := utils.GetPage()
 	copy(node, db.pageReadFile(ptr)) // initialized from the file
 	db.page.updates[ptr] = node
 	return node
@@ -314,6 +315,7 @@ func writePages(db *KV) error {
 		if _, err := unix.Pwrite(db.fd, node, offset); err != nil {
 			return err
 		}
+		utils.PutPage(db.page.updates[ptr])
 	}
 	// discard in-memory data
 	db.page.flushed += db.page.nappend
