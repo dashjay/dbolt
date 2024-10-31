@@ -1,4 +1,4 @@
-package ondisk
+package dbolt
 
 import (
 	"bytes"
@@ -48,18 +48,31 @@ func (d *D) dispose() {
 	os.Remove("test.db")
 }
 
-func (d *D) add(key []byte, val []byte) {
-	utils.Assertf(d.db.Set(key, val) == nil, "add error")
+func (d *D) add(key []byte, val []byte) error {
+	tx := d.db.Begin(true)
+	utils.Assertf(tx.Set(key, val) == nil, "add error")
 	d.ref[string(key)] = string(val)
+	return tx.Commit()
 }
 
 func (d *D) get(key []byte) ([]byte, bool) {
-	return d.db.Get(key)
+	tx := d.db.Begin(false)
+	defer func() {
+		err := tx.Commit()
+		utils.Assertf(err == nil, "commit on transaction failed: %s", err)
+	}()
+	return tx.Get(key)
 }
 
 func (d *D) del(key []byte) bool {
 	delete(d.ref, string(key))
-	deleted, err := d.db.Del(key)
+	tx := d.db.Begin(true)
+	defer func() {
+		err := tx.Commit()
+		utils.Assertf(err == nil, "commit on transaction failed: %s", err)
+
+	}()
+	deleted, err := tx.Del(key)
 	utils.Assert(err == nil, "")
 	return deleted
 }
@@ -261,8 +274,8 @@ func TestKVFsyncErr(t *testing.T) {
 	c := newD()
 	defer c.dispose()
 
-	set := c.db.Set
-	get := c.db.Get
+	set := c.add
+	get := c.get
 
 	err := set([]byte("k"), []byte("1"))
 	utils.Assert(err == nil, "")
