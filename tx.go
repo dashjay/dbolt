@@ -35,38 +35,58 @@ func (t *Tx) init(db *KV, writable bool) {
 }
 
 func (t *Tx) commitOrRollback() error {
-	// ensure the on-disk meta page matches the in-memory one after an error
-	if t.writable && t.db.failed {
-		if _, err := syscall.Pwrite(t.db.fd, t.oldMeta, 0); err != nil {
-			return fmt.Errorf("rewrite meta page: %w", err)
+	defer func() {
+		if t.db != nil {
+			if t.writable {
+				t.db.txMu.Unlock()
+			} else {
+				t.db.txMu.RUnlock()
+			}
+			t.db = nil
 		}
-		if err := t.db.Fsync(t.db.fd); err != nil {
+	}()
+
+	if t.writable && t.db.failed {
+		if err := t.rewriteMetaPage(); err != nil {
 			return err
 		}
-		t.db.failed = false
 	}
+
 	if t.writable {
-		// 2-phase update
-		err := updateFile(t.db)
-		// revert on error
-		if err != nil {
-			// the on-disk meta page is in an unknown state.
-			// mark it to be rewritten on later recovery.
-			t.db.failed = true
-			// in-memory states are reverted immediately to allow reads
-			loadMeta(t.db, t.oldMeta)
-			// discard temporaries
-			t.db.page.nappend = 0
-			t.db.page.updates = map[uint64][]byte{}
-		}
-		t.db.txMu.Unlock()
-		t.db = nil
-		return err
-	} else {
-		t.db.txMu.RUnlock()
-		t.db = nil
+		return t.commit()
 	}
+
 	return nil
+}
+
+func (t *Tx) rewriteMetaPage() error {
+	if _, err := syscall.Pwrite(t.db.fd, t.oldMeta, 0); err != nil {
+		return fmt.Errorf("rewrite meta page: %w", err)
+	}
+	if err := t.db.Fsync(t.db.fd); err != nil {
+		return err
+	}
+	t.db.failed = false
+	return nil
+}
+
+func (t *Tx) commit() error {
+	err := updateFile(t.db)
+	if err != nil {
+		t.rollback()
+	}
+	return err
+}
+
+func (t *Tx) rollback() {
+	// the on-disk meta page is in an unknown state.
+	// mark it to be rewritten on later recovery.
+	t.db.failed = true
+	// in-memory states are reverted immediately to allow reads
+	loadMeta(t.db, t.oldMeta)
+	// discard temporaries
+	t.db.page.nappend = 0
+	t.db.page.updates = map[uint64][]byte{}
 }
 
 func (t *Tx) Commit() error {
