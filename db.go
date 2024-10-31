@@ -1,4 +1,4 @@
-package ondisk
+package dbolt
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sync"
 	"syscall"
 
 	"github.com/dashjay/dbolt/pkg/btree"
@@ -33,6 +34,8 @@ type KV struct {
 		updates map[uint64][]byte // pending updates, including appended pages
 	}
 	failed bool // Did the last update fail?
+
+	txMu sync.RWMutex
 }
 
 // `BTree.get`, read a page.
@@ -276,33 +279,6 @@ func updateFile(db *KV) error {
 	return nil
 }
 
-func updateOrRevert(db *KV, meta []byte) error {
-	// ensure the on-disk meta page matches the in-memory one after an error
-	if db.failed {
-		if _, err := syscall.Pwrite(db.fd, meta, 0); err != nil {
-			return fmt.Errorf("rewrite meta page: %w", err)
-		}
-		if err := db.Fsync(db.fd); err != nil {
-			return err
-		}
-		db.failed = false
-	}
-	// 2-phase update
-	err := updateFile(db)
-	// revert on error
-	if err != nil {
-		// the on-disk meta page is in an unknown state.
-		// mark it to be rewritten on later recovery.
-		db.failed = true
-		// in-memory states are reverted immediately to allow reads
-		loadMeta(db, meta)
-		// discard temporaries
-		db.page.nappend = 0
-		db.page.updates = map[uint64][]byte{}
-	}
-	return err
-}
-
 func writePages(db *KV) error {
 	// extend the mmap if needed
 	size := (db.page.flushed + db.page.nappend) * constants.BTREE_PAGE_SIZE
@@ -324,24 +300,6 @@ func writePages(db *KV) error {
 	return nil
 }
 
-// KV interfaces
-func (db *KV) Get(key []byte) ([]byte, bool) {
-	return db.tree.Get(key)
-}
-func (db *KV) Set(key []byte, val []byte) error {
-	meta := saveMeta(db)
-	db.tree.Insert(key, val)
-	return updateOrRevert(db, meta)
-}
-func (db *KV) Del(key []byte) (bool, error) {
-	meta := saveMeta(db)
-	if !db.tree.Delete(key) {
-		return false, nil
-	}
-	err := updateOrRevert(db, meta)
-	return err == nil, err
-}
-
 // Close cleanups all mmap chunks and close the files
 func (db *KV) Close() {
 	for i := range db.mmap.chunks {
@@ -354,4 +312,8 @@ func (db *KV) Close() {
 	utils.Assertf(err == nil, "Close: syscall.Ftruncate error: %s", err)
 	err = syscall.Close(db.fd)
 	utils.Assertf(err == nil, "Close: syscall.Close(db.fd) error: %s", err)
+}
+
+func (db *KV) Begin(writable bool) *Tx {
+	return NewTx(db, writable)
 }
