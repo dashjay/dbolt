@@ -2,6 +2,7 @@ package btree
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 	"unsafe"
@@ -43,7 +44,7 @@ func TestBtree(t *testing.T) {
 	for i := uint16(0); i < 4096; i++ {
 		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 
-		// add same key again !
+		// add the same keys again!
 		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 	}
 
@@ -54,12 +55,7 @@ func TestBtree(t *testing.T) {
 		return a, b
 	}
 
-	first := true
 	ctree.traversal(func(key []byte, val []byte) {
-		if first {
-			first = false
-			return
-		}
 		expectKey, expectVal := next()
 		assert.Equal(t, expectKey, key)
 		assert.Equal(t, expectVal, val)
@@ -75,12 +71,7 @@ func TestBtree(t *testing.T) {
 	}
 
 	idx = 30
-	first = true
 	ctree.traversal(func(key []byte, val []byte) {
-		if first {
-			first = false
-			return
-		}
 		expectKey, expectVal := next()
 		assert.Equal(t, expectKey, key)
 		assert.Equal(t, expectVal, val)
@@ -222,18 +213,25 @@ func (c *C) get(key []byte) ([]byte, bool) {
 	return c.tree.Get(key)
 }
 
-func (c *C) traversalUtil(node bnode.Node, fn func(key []byte, val []byte)) {
+func (c *C) traversalUtil(node bnode.Node, fn func(key []byte, val []byte), first *bool) {
 	if node == nil {
 		return
 	}
+
 	switch node.Type() {
 	case bnode.NodeTypeNode:
 		for i := uint16(0); i < node.KeyCounts(); i++ {
 			subNode := c.tree.getNode(node.GetPtr(i))
-			c.traversalUtil(subNode, fn)
+			c.traversalUtil(subNode, fn, first)
 		}
 	case bnode.NodeTypeLeaf:
 		for i := uint16(0); i < node.KeyCounts(); i++ {
+			if *first {
+				*first = false
+				utils.Assertf(len(node.GetKey(i)) == 0, "first key is empty but has length %d, idx: %d", len(node.GetKey(i)), i)
+				utils.Assertf(len(node.GetVal(i)) == 0, "first value is empty but has length %d, idx: %d", len(node.GetVal(i)), i)
+				continue
+			}
 			fn(node.GetKey(i), node.GetVal(i))
 		}
 	default:
@@ -242,7 +240,8 @@ func (c *C) traversalUtil(node bnode.Node, fn func(key []byte, val []byte)) {
 }
 
 func (c *C) traversal(fn func(key []byte, val []byte)) {
-	c.traversalUtil(c.tree.getNode(c.tree.root), fn)
+	first := true
+	c.traversalUtil(c.tree.getNode(c.tree.root), fn, &first)
 }
 
 func TestBTreeWithProgressingBar(t *testing.T) {
@@ -291,12 +290,7 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 	}
 
 	bar = progressbar.Default(N, "iter keys")
-	first := true
 	cTree.traversal(func(key []byte, val []byte) {
-		if first {
-			first = false
-			return
-		}
 		bar.Add(1)
 		expectKey, expectVal := nextKeyValuePair()
 		assert.Equal(t, expectKey, key)
@@ -315,5 +309,27 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 		bar.Add(1)
 		deleted := cTree.del(KeyOfInt(i))
 		assert.False(t, deleted)
+	}
+}
+
+func TestTreeCursor(t *testing.T) {
+	cTree := newC()
+
+	const count = math.MaxUint16
+	for i := uint16(0); i < count; i++ {
+		cTree.add(utils.GenTestKey(i), utils.GenTestValue(i))
+	}
+
+	cursor := cTree.tree.NewTreeCursor()
+	key, value := cursor.SeekToFirst()
+	assert.Equal(t, utils.GenTestKey(0), key)
+	assert.Equal(t, utils.GenTestValue(0), value)
+
+	for i := uint16(1); i < count; i++ {
+		key, value = cursor.Next()
+		assert.Equal(t, utils.GenTestKey(i), key)
+		assert.Equal(t, utils.GenTestValue(i), value)
+		assert.Equal(t, utils.GenTestKey(i), cursor.Key())
+		assert.Equal(t, utils.GenTestValue(i), cursor.Value())
 	}
 }
