@@ -41,7 +41,6 @@ func (this *Tree) SetRoot(in uint64) {
 func (this *Tree) Insert(key []byte, val []byte) {
 	if this.root == 0 {
 		// create the first node (leaf type)
-		//rootBNode := bnode.Node(make([]byte, constants.BTREE_PAGE_SIZE))
 		rootBNode := bnode.Node(utils.GetPage())
 		rootBNode.SetHeader(bnode.NodeTypeLeaf, 2)
 		// a dummy key, this makes this tree cover the whole key space.
@@ -120,7 +119,7 @@ func (this *Tree) nodeReplace2Kid(
 func (this *Tree) _nodeInsert(newNode bnode.Node, node bnode.Node, idx uint16,
 	key []byte, val []byte,
 ) {
-	// get the ptr by idx
+	// get the idx by idx
 	kptr := node.GetPtr(idx)
 	// recursive insertion to the kid node
 	knode := this._treeInsert(this.getNode(kptr), key, val)
@@ -203,16 +202,15 @@ func nodeMerge(newNode bnode.Node, leftNode bnode.Node, rightNode bnode.Node) {
 // _treeGet get specified key-value from the node
 // value will be copied
 func (this *Tree) _treeGet(node bnode.Node, key []byte) ([]byte, bool) {
+	idx := bnode.NodeLookupLEBinary(node, key)
 	switch node.Type() {
 	case bnode.NodeTypeNode:
-		idx := bnode.NodeLookupLEBinary(node, key)
 		n := bytes.Compare(node.GetKey(idx), key)
 		if n <= 0 {
 			return this._treeGet(this.getNode(node.GetPtr(idx)), key)
 		}
 		return this._treeGet(this.getNode(node.GetPtr(idx-1)), key)
 	case bnode.NodeTypeLeaf:
-		idx := bnode.NodeLookupLEBinary(node, key)
 		if bytes.Equal(node.GetKey(idx), key) {
 			return node.GetVal(idx), true
 		}
@@ -285,4 +283,113 @@ func (this *Tree) _nodeDelete(node bnode.Node, idx uint16, key []byte) bnode.Nod
 		utils.Assertf(false, "should not happend.(merged: %d, updated.nKeys(): %d)", mergeDir, updated.KeyCounts())
 	}
 	return newNode
+}
+
+type nodeRef struct {
+	node uint64
+	idx  uint16
+}
+
+type TreeCursor struct {
+	tree  *Tree
+	stack *utils.Stack[nodeRef]
+}
+
+func (this *Tree) NewTreeCursor() *TreeCursor {
+	return &TreeCursor{
+		tree:  this,
+		stack: nil,
+	}
+}
+
+func (this *TreeCursor) SeekToFirst() ([]byte, []byte) {
+	this.stack = &utils.Stack[nodeRef]{}
+	this.stack.Push(nodeRef{node: this.tree.root, idx: 0})
+	for !this.stack.Empty() {
+		top := this.stack.Top()
+		node := bnode.Node(this.tree.getNode(top.node))
+		switch node.Type() {
+		case bnode.NodeTypeLeaf:
+			// 第一个 key 是一个空 key
+			this.stack.TopRef().idx += 1
+			return node.GetKey(1), node.GetVal(1)
+		case bnode.NodeTypeNode:
+			ptr := node.GetPtr(0)
+			this.stack.Push(nodeRef{
+				node: ptr,
+				idx:  0,
+			})
+			continue
+		default:
+			utils.Assertf(false, "assertion failed: unknown nodeType %d", node.Type())
+		}
+	}
+	return nil, nil
+}
+
+func (this *TreeCursor) Seek(key []byte) ([]byte, []byte) {
+	this.stack = &utils.Stack[nodeRef]{}
+	this.stack.Push(nodeRef{node: this.tree.root, idx: 0})
+	for !this.stack.Empty() {
+		top := this.stack.Top()
+		node := bnode.Node(this.tree.getNode(top.node))
+		idx := bnode.NodeLookupLEBinary(node, key)
+		switch node.Type() {
+		case bnode.NodeTypeLeaf:
+			this.stack.TopRef().idx = idx
+			if bytes.Equal(node.GetKey(idx), key) {
+				return node.GetKey(idx), node.GetVal(idx)
+			} else {
+				return nil, nil
+			}
+		case bnode.NodeTypeNode:
+			ptr := node.GetPtr(idx)
+			this.stack.Push(nodeRef{node: ptr, idx: 0})
+			continue
+		default:
+			utils.Assertf(false, "assertion failed: unknown nodeType %d", node.Type())
+		}
+	}
+	return nil, nil
+}
+
+func (this *TreeCursor) Key() []byte {
+	top := this.stack.Top()
+	node := bnode.Node(this.tree.getNode(top.node))
+	return node.GetKey(top.idx)
+}
+
+func (this *TreeCursor) Value() []byte {
+	top := this.stack.Top()
+	node := bnode.Node(this.tree.getNode(top.node))
+	return node.GetVal(top.idx)
+}
+
+func (this *TreeCursor) Next() ([]byte, []byte) {
+	for !this.stack.Empty() {
+		top := this.stack.TopRef()
+		node := bnode.Node(this.tree.getNode(top.node))
+		top.idx += 1
+		if top.idx >= node.KeyCounts() {
+			this.stack.Pop()
+			continue
+		}
+		if node.Type() == bnode.NodeTypeLeaf {
+			return node.GetKey(top.idx), node.GetVal(top.idx)
+		} else if node.Type() == bnode.NodeTypeNode {
+			newNode := node.GetPtr(top.idx)
+			this.stack.Push(nodeRef{node: newNode, idx: 0})
+			leafNode := bnode.Node(this.tree.getNode(newNode))
+			for leafNode.Type() == bnode.NodeTypeNode {
+				newNode = leafNode.GetPtr(0)
+				this.stack.Push(nodeRef{node: newNode, idx: 0})
+				leafNode = this.tree.getNode(newNode)
+			}
+			utils.Assertf(leafNode.Type() == bnode.NodeTypeLeaf, "assertion failed: leafNode type %d", leafNode.Type())
+			return leafNode.GetKey(0), leafNode.GetVal(0)
+		} else {
+			utils.Assertf(false, "assertion failed: unknown nodeType %d", node.Type())
+		}
+	}
+	return nil, nil
 }
