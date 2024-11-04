@@ -351,5 +351,5 @@ func TestTreeCursor(t *testing.T) {
 	assert.Nil(t, value)
 	key, value = cursor.Next()
 	assert.Equal(t, utils.GenTestKey(math.MaxUint16/2+1), key)
-	assert.Equal(t, utils.GenTestKey(math.MaxUint16/2+1), value)
+	assert.Equal(t, utils.GenTestValue(math.MaxUint16/2+1), value)
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"syscall"
@@ -35,6 +36,11 @@ func newD() *D {
 	d.db.Fsync = syscall.Fsync // faster
 	err := d.db.Open()
 	utils.Assert(err == nil, "")
+
+	tx := d.db.Begin(true)
+	err = tx.Commit()
+	utils.Assert(err == nil, "")
+
 	return d
 }
 
@@ -48,6 +54,14 @@ func (d *D) reopen() {
 func (d *D) dispose() {
 	d.db.Close()
 	os.Remove("test.db")
+}
+
+func (d *D) batchAdd(keys [][]byte, values [][]byte) {
+	tx := d.db.Begin(true)
+	for i := 0; i < len(keys); i++ {
+		utils.Assertf(tx.Set(keys[i], values[i]) == nil, "add error")
+		d.ref[string(keys[i])] = string(values[i])
+	}
 }
 
 func (d *D) add(key []byte, val []byte) error {
@@ -365,21 +379,42 @@ func TestKVIncLength(t *testing.T) {
 	}
 }
 
-func BenchmarkSet(b *testing.B) {
-	const keySize, valueSize = 64, 256
-	d := newD()
-	key := make([]byte, keySize)
-	value := make([]byte, valueSize)
-	keysRef := make([][]byte, 0)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		rand.Read(key)
-		rand.Read(value)
-		keysRef = append(keysRef, bytes.Clone(key))
-		b.StartTimer()
-		d.add(key, value)
-		b.StopTimer()
+func TestDBCompact(t *testing.T) {
+	c := newD()
+
+	reportFileSize := func(fd int) {
+		var sts syscall.Stat_t
+		err := syscall.Fstat(fd, &sts)
+		assert.Nilf(t, err, "%s", err)
+		t.Logf("fd: %d, size: %d", c.db.fd, sts.Size)
 	}
+
+	t.Log("report empty db")
+	reportFileSize(c.db.fd)
+
+	tx := c.db.Begin(true)
+	for i := uint16(0); i < math.MaxUint16; i++ {
+		key := utils.GenTestKey(i)
+		value := utils.GenTestValue(i)
+		err := tx.Set(key, value)
+		assert.Nil(t, err)
+		if i%9 == 0 {
+			err = tx.Commit()
+			assert.Nil(t, err)
+			tx = c.db.Begin(true)
+		}
+	}
+	t.Log("report before commit")
+	reportFileSize(c.db.fd)
+	err := tx.Commit()
+	t.Log("report after commit")
+	reportFileSize(c.db.fd)
+
+	assert.Nil(t, err)
+	t.Log("report before close")
+	reportFileSize(c.db.fd)
+	c.db.Close()
+	t.Logf("totally %d pages", c.db.page.flushed)
 }
 
 func BenchmarkOnDisk(b *testing.B) {
