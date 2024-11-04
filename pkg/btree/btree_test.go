@@ -290,12 +290,14 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 	}
 
 	bar = progressbar.Default(N, "iter keys")
-	cTree.traversal(func(key []byte, val []byte) {
+	cursor := cTree.tree.NewTreeCursor()
+
+	for key, value := cursor.SeekToFirst(); key != nil; key, value = cursor.Next() {
 		bar.Add(1)
 		expectKey, expectVal := nextKeyValuePair()
 		assert.Equal(t, expectKey, key)
-		assert.Equal(t, expectVal, val)
-	})
+		assert.Equal(t, expectVal, value)
+	}
 
 	bar = progressbar.Default(N, "del keys")
 	for i := 0; i < N; i++ {
@@ -342,4 +344,11 @@ func TestTreeCursor(t *testing.T) {
 		assert.Equal(t, utils.GenTestKey(i), key)
 		assert.Equal(t, utils.GenTestValue(i), value)
 	}
+
+	keyNotExists := append(utils.GenTestKey(math.MaxUint16/2), '0')
+	key, value = cursor.Seek(keyNotExists)
+	assert.Nil(t, key)
+	assert.Nil(t, value)
+	key, value = cursor.Next()
+	print(key, value)
 }
