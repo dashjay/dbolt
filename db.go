@@ -317,3 +317,9 @@ func (db *KV) Close() {
 func (db *KV) Begin(writable bool) *Tx {
 	return NewTx(db, writable)
 }
+
+func Open(fp string) (*KV, error) {
+	db := &KV{Path: fp}
+	err := db.Open()
+	return db, err
+}
