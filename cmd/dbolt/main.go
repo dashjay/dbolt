@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	DBPath string
+	DBPath     string
+	BatchCount int64
 )
 
 func main() {
@@ -30,6 +31,7 @@ func NewDBCommand() *cobra.Command {
 		NewAppendDBCommand(),
 		NewDeleteCommand(),
 	)
+	cmd.PersistentFlags().Int64Var(&BatchCount, "batch-count", 10, "count for every transaction")
 	cmd.PersistentFlags().StringVar(&DBPath, "db-path", "", "path to database")
 	return cmd
 }
@@ -59,7 +61,7 @@ func NewAppendDBCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
 			}
-			if i%10 == 0 {
+			if i%BatchCount == 0 {
 				err = tx.Commit()
 				if err != nil {
 					return fmt.Errorf("commit tx error: %s", err)
@@ -101,7 +103,7 @@ func NewDeleteCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
 			}
-			if i%10 == 0 {
+			if i%BatchCount == 0 {
 				err = tx.Commit()
 				if err != nil {
 					return fmt.Errorf("commit tx error: %s", err)
@@ -147,7 +149,7 @@ func NewCreateDBCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
 			}
-			if i%10 == 0 {
+			if i%BatchCount == 0 {
 				err = tx.Commit()
 				if err != nil {
 					return fmt.Errorf("commit tx error: %s", err)

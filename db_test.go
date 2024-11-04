@@ -32,15 +32,9 @@ func newD() *D {
 
 	d := &D{db: new(KV)}
 	d.ref = map[string]string{}
-	d.db.Path = "test.db"
-	d.db.Fsync = syscall.Fsync // faster
-	err := d.db.Open()
+	var err error
+	d.db, err = Open("test.db")
 	utils.Assert(err == nil, "")
-
-	tx := d.db.Begin(true)
-	err = tx.Commit()
-	utils.Assert(err == nil, "")
-
 	return d
 }
 

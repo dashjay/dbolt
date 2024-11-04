@@ -313,15 +313,6 @@ func (db *KV) Close() {
 	utils.Assertf(err == nil, "Close: syscall.Close(db.fd) error: %s", err)
 }
 
-func (db *KV) FreeNoUsedSpace() error {
-	tx := db.Begin(true)
-
-	for head := db.free.PopHead(); head != 0; head = db.free.PopHead() {
-
-	}
-	return tx.Commit()
-}
-
 func (db *KV) Begin(writable bool) *Tx {
 	return NewTx(db, writable)
 }
