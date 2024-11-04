@@ -329,14 +329,18 @@ func (this *TreeCursor) SeekToFirst() ([]byte, []byte) {
 
 func (this *TreeCursor) Seek(key []byte) ([]byte, []byte) {
 	this.stack = &utils.Stack[nodeRef]{}
-	this.stack.Push(nodeRef{node: this.tree.root, idx: 0})
+	rootNode := bnode.Node(this.tree.getNode(this.tree.Root()))
+	idx := bnode.NodeLookupLE(rootNode, key)
+	this.stack.Push(nodeRef{
+		node: this.tree.root,
+		idx:  idx,
+	})
 	for !this.stack.Empty() {
 		top := this.stack.Top()
 		node := bnode.Node(this.tree.getNode(top.node))
-		idx := bnode.NodeLookupLEBinary(node, key)
+		idx := bnode.NodeLookupLE(node, key)
 		switch node.Type() {
 		case bnode.NodeTypeLeaf:
-			this.stack.TopRef().idx = idx
 			if bytes.Equal(node.GetKey(idx), key) {
 				return node.GetKey(idx), node.GetVal(idx)
 			} else {
@@ -344,10 +348,9 @@ func (this *TreeCursor) Seek(key []byte) ([]byte, []byte) {
 			}
 		case bnode.NodeTypeNode:
 			ptr := node.GetPtr(idx)
-			this.stack.Push(nodeRef{node: ptr, idx: 0})
+			nextLevelIdx := bnode.NodeLookupLE(this.tree.getNode(ptr), key)
+			this.stack.Push(nodeRef{node: ptr, idx: nextLevelIdx})
 			continue
-		default:
-			utils.Assertf(false, "assertion failed: unknown nodeType %d", node.Type())
 		}
 	}
 	return nil, nil
@@ -379,14 +382,14 @@ func (this *TreeCursor) Next() ([]byte, []byte) {
 		} else if node.Type() == bnode.NodeTypeNode {
 			newNode := node.GetPtr(top.idx)
 			this.stack.Push(nodeRef{node: newNode, idx: 0})
-			leafNode := bnode.Node(this.tree.getNode(newNode))
-			for leafNode.Type() == bnode.NodeTypeNode {
-				newNode = leafNode.GetPtr(0)
+			nextNode := bnode.Node(this.tree.getNode(newNode))
+			for nextNode.Type() == bnode.NodeTypeNode {
+				newNode = nextNode.GetPtr(0)
 				this.stack.Push(nodeRef{node: newNode, idx: 0})
-				leafNode = this.tree.getNode(newNode)
+				nextNode = this.tree.getNode(newNode)
 			}
-			utils.Assertf(leafNode.Type() == bnode.NodeTypeLeaf, "assertion failed: leafNode type %d", leafNode.Type())
-			return leafNode.GetKey(0), leafNode.GetVal(0)
+			utils.Assertf(nextNode.Type() == bnode.NodeTypeLeaf, "assertion failed: leafNode type %d", nextNode.Type())
+			return nextNode.GetKey(0), nextNode.GetVal(0)
 		} else {
 			utils.Assertf(false, "assertion failed: unknown nodeType %d", node.Type())
 		}

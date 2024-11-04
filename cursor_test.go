@@ -21,5 +21,25 @@ func TestCursor(t *testing.T) {
 	defer tx.Commit()
 
 	cursor := tx.Cursor()
-	cursor.SeekToFirst()
+	key, value := cursor.SeekToFirst()
+	assert.Equal(t, utils.GenTestKey(0), key)
+	assert.Equal(t, utils.GenTestValue(0), value)
+
+	for i := uint16(1); i < math.MaxUint16; i++ {
+		key, value = cursor.Next()
+		assert.Equal(t, utils.GenTestKey(i), key)
+		assert.Equal(t, utils.GenTestValue(i), value)
+		assert.Equal(t, utils.GenTestKey(i), cursor.Key())
+		assert.Equal(t, utils.GenTestValue(i), cursor.Value())
+	}
+
+	key, value = cursor.Seek(utils.GenTestKey(math.MaxUint16 / 2))
+	assert.Equal(t, key, utils.GenTestKey(math.MaxUint16/2))
+	assert.Equal(t, value, utils.GenTestValue(math.MaxUint16/2))
+
+	for i := uint16(math.MaxUint16/2 + 1); i < math.MaxUint16; i++ {
+		key, value = cursor.Next()
+		assert.Equal(t, utils.GenTestKey(i), key)
+		assert.Equal(t, utils.GenTestValue(i), value)
+	}
 }

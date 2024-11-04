@@ -24,3 +24,7 @@ func (c *Cursor) Value() []byte {
 func (c *Cursor) Next() ([]byte, []byte) {
 	return c.cursor.Next()
 }
+
+func (c *Cursor) Seek(key []byte) ([]byte, []byte) {
+	return c.cursor.Seek(key)
+}
