@@ -4,6 +4,16 @@ type Stack[T any] struct {
 	data []T
 }
 
+func NewStack[T any]() *Stack[T] {
+	return &Stack[T]{}
+}
+
+func NewStackWithCap[T any](cap int) *Stack[T] {
+	return &Stack[T]{
+		data: make([]T, 0, cap),
+	}
+}
+
 func (s *Stack[T]) Push(v T) {
 	s.data = append(s.data, v)
 }
