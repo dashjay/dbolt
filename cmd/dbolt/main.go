@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"time"
 
 	"github.com/dashjay/dbolt"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +46,7 @@ func NewAppendDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		bar := progressbar.Default(*entryCount, "appending to db")
 		_, err := os.Stat(DBPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -54,9 +57,10 @@ func NewAppendDBCommand() *cobra.Command {
 		}
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
+			bar.Add(1)
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
-			fmt.Printf("append key/value pair: %s/%s\n", key, value)
+			bar.Describe(fmt.Sprintf("append key/value pair: %s/%s", key, value))
 			err = tx.Set(key, value)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -87,6 +91,7 @@ func NewDeleteCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		bar := progressbar.Default(*entryCount, "deleting db")
 		_, err := os.Stat(DBPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -98,7 +103,8 @@ func NewDeleteCommand() *cobra.Command {
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
-			fmt.Printf("delete key: %s\n", key)
+			bar.Add(1)
+			bar.Describe(fmt.Sprintf("delete key: %s", key))
 			_, err = tx.Del(key)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -128,7 +134,9 @@ func NewCreateDBCommand() *cobra.Command {
 	keyTpl := cmd.Flags().String("key-tpl", "test-key-%010d", "template of key")
 	valueTpl := cmd.Flags().String("value-tpl", "test-value-%010d", "template of value")
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
+
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		bar := progressbar.Default(*entryCount, "creating db")
 		_, err := os.Stat(DBPath)
 		if err == nil {
 			return fmt.Errorf("create db error, db %s already exists", DBPath)
@@ -144,7 +152,8 @@ func NewCreateDBCommand() *cobra.Command {
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
-			fmt.Printf("insert key/value pair: %s/%s\n", key, value)
+			bar.Describe(fmt.Sprintf("insert key/value pair: %s/%s", key, value))
+			bar.Add(1)
 			err = tx.Set(key, value)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -172,10 +181,17 @@ func NewScanDBCommand() *cobra.Command {
 	cmd := new(cobra.Command)
 	cmd.Use = "scan"
 
-	handleOne := func(key, value []byte) {
-		fmt.Fprintf(os.Stdout, "key: %s, value: %s\n", key, value)
-	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		i := 0
+		handleOne := func(key, value []byte) {
+			i++
+			fmt.Printf("key: %s, value: %s, %d scanned\n", key, value, i)
+		}
+		start := time.Now()
+
+		defer func() {
+			fmt.Printf("%d key scanned in %.2f sec, %.2f per sec", i, time.Since(start).Seconds(), float64(i)/time.Since(start).Seconds())
+		}()
 		kv, err := dbolt.Open(DBPath)
 		if err != nil {
 			return err

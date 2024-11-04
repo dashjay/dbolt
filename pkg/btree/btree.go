@@ -15,6 +15,7 @@ type Tree struct {
 	getNode func(uint64) []byte // dereference a pointer
 	newNode func([]byte) uint64 // allocate a new page
 	delNode func(uint64)        // deallocate a page
+
 }
 
 func NewTree(getNodeCB func(uint64) []byte, newNodeCB func([]byte) uint64, delNodeCB func(uint64)) Tree {
@@ -225,9 +226,6 @@ func (this *Tree) _treeGet(node bnode.Node, key []byte) ([]byte, bool) {
 // the caller is responsible for deallocating the input node
 // and merge the result node with sibling
 func (this *Tree) _treeDelete(node bnode.Node, key []byte) bnode.Node {
-	// the result node.
-	newNode := bnode.Node(utils.GetPage())
-
 	// which key should be deleted
 	idx := bnode.NodeLookupLE(node, key)
 
@@ -237,6 +235,7 @@ func (this *Tree) _treeDelete(node bnode.Node, key []byte) bnode.Node {
 		return this._nodeDelete(node, idx, key)
 		// delete key from a node
 	case bnode.NodeTypeLeaf:
+		newNode := bnode.Node(utils.GetPage())
 		// leaf, node.getKey(idx) == key
 		if bytes.Equal(key, node.GetKey(idx)) {
 			// found the key, delete it.
@@ -244,10 +243,11 @@ func (this *Tree) _treeDelete(node bnode.Node, key []byte) bnode.Node {
 		} else {
 			return nil // indicate not found
 		}
+		return newNode
 	default:
 		utils.Assertf(false, "assertion failed: unknown nodeType %d", node.Type())
 	}
-	return newNode
+	return nil
 }
 
 // delete a key from an internal node; part of the _treeDelete()
@@ -261,7 +261,6 @@ func (this *Tree) _nodeDelete(node bnode.Node, idx uint16, key []byte) bnode.Nod
 	this.delNode(kptr)
 
 	newNode := bnode.Node(utils.GetPage())
-	// assertCheckFreelist for merging
 	mergeDir, sibling := this.shouldMerge(node, idx, updated)
 	switch {
 	case mergeDir < 0: // left
