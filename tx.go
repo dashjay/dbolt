@@ -108,6 +108,10 @@ func (t *Tx) Set(key []byte, val []byte) error {
 	return nil
 }
 
+func (t *Tx) Cursor() *Cursor {
+	return &Cursor{tx: t}
+}
+
 func (t *Tx) Del(key []byte) (bool, error) {
 	if !t.writable {
 		return false, errors.New("dbolt: transaction not writable")
