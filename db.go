@@ -203,7 +203,7 @@ func readRoot(db *KV, fileSize int64) error {
 			/*default tailPage = 1*/ 1,
 			/* default tailSeq = 1*/ 0,
 		)
-		return writePages(db)
+		return nil
 	}
 	// read the page
 	data := db.mmap.chunks[0]
