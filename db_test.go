@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"syscall"
 	"testing"
 
 	"github.com/dashjay/dbolt/pkg/bnode"
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/freelist"
 	"github.com/dashjay/dbolt/pkg/utils"
+	"github.com/schollz/progressbar/v3"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,7 +32,7 @@ func newD() *D {
 	d := &D{db: new(KV)}
 	d.ref = map[string]string{}
 	d.db.Path = "test.db"
-	d.db.Fsync = nofsync // faster
+	d.db.Fsync = syscall.Fsync // faster
 	err := d.db.Open()
 	utils.Assert(err == nil, "")
 	return d
@@ -392,10 +394,12 @@ func BenchmarkOnDisk(b *testing.B) {
 			keysRef := make([][]byte, 0)
 			b.Run(fmt.Sprintf(`add-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "adding keys")
 				for i := 0; i < b.N; i++ {
 					rand.Read(key)
 					rand.Read(value)
 					keysRef = append(keysRef, bytes.Clone(key))
+					bar.Add(1)
 					b.StartTimer()
 					d.add(key, value)
 					b.StopTimer()
@@ -404,7 +408,9 @@ func BenchmarkOnDisk(b *testing.B) {
 
 			b.Run(fmt.Sprintf(`get-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "getting keys")
 				for i := 0; i < b.N; i++ {
+					bar.Add(1)
 					key := keysRef[i%len(keysRef)]
 					_, _ = d.get(key)
 				}
@@ -412,8 +418,10 @@ func BenchmarkOnDisk(b *testing.B) {
 
 			b.Run(fmt.Sprintf(`get-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "getting non-exists keys")
 				for i := 0; i < b.N; i++ {
 					rand.Read(key)
+					bar.Add(1)
 					b.StartTimer()
 					_, _ = d.get(key)
 					b.StopTimer()
@@ -422,16 +430,20 @@ func BenchmarkOnDisk(b *testing.B) {
 
 			b.Run(fmt.Sprintf(`delete-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "deleting key keys")
 				for i := 0; i < b.N; i++ {
 					key := keysRef[i%len(keysRef)]
+					bar.Add(1)
 					_ = d.del(key)
 				}
 			})
 
 			b.Run(fmt.Sprintf(`delete-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "deleting non-exists key keys")
 				for i := 0; i < b.N; i++ {
 					rand.Read(key)
+					bar.Add(1)
 					b.StartTimer()
 					_ = d.del(key)
 					b.StopTimer()
