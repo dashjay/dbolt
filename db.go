@@ -90,7 +90,6 @@ func (db *KV) pageWrite(ptr uint64) []byte {
 	if node, ok := db.page.updates[ptr]; ok {
 		return node // pending update
 	}
-	//node := make([]byte, constants.BTREE_PAGE_SIZE)
 	node := utils.GetPage()
 	copy(node, db.pageReadFile(ptr)) // initialized from the file
 	db.page.updates[ptr] = node
@@ -204,7 +203,7 @@ func readRoot(db *KV, fileSize int64) error {
 			/*default tailPage = 1*/ 1,
 			/* default tailSeq = 1*/ 0,
 		)
-		return nil // the meta page will be written in the 1st update
+		return nil
 	}
 	// read the page
 	data := db.mmap.chunks[0]
@@ -316,4 +315,17 @@ func (db *KV) Close() {
 
 func (db *KV) Begin(writable bool) *Tx {
 	return NewTx(db, writable)
+}
+
+func Open(fp string) (*KV, error) {
+	db := &KV{Path: fp}
+	err := db.Open()
+
+	// start an empty write transaction
+	tx := db.Begin(true)
+	err = tx.Commit()
+	if err != nil {
+		return nil, fmt.Errorf("open: empty commit transaction error: %s", err)
+	}
+	return db, err
 }

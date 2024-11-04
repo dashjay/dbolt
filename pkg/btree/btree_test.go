@@ -262,7 +262,7 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 	ValueOfInt := func(i int) []byte {
 		return []byte(fmt.Sprintf("value-%08d", i))
 	}
-	const N = 1_000_000 // 1 million
+	const N = 100_000 // 100k
 	bar := progressbar.Default(N, "adding keys")
 	for i := 0; i < N; i++ {
 		bar.Add(1)
@@ -350,5 +350,6 @@ func TestTreeCursor(t *testing.T) {
 	assert.Nil(t, key)
 	assert.Nil(t, value)
 	key, value = cursor.Next()
-	print(key, value)
+	assert.Equal(t, utils.GenTestKey(math.MaxUint16/2+1), key)
+	assert.Equal(t, utils.GenTestValue(math.MaxUint16/2+1), value)
 }

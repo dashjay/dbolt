@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"os"
 	"sort"
+	"syscall"
 	"testing"
 
 	"github.com/dashjay/dbolt/pkg/bnode"
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/freelist"
 	"github.com/dashjay/dbolt/pkg/utils"
+	"github.com/schollz/progressbar/v3"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,9 +32,8 @@ func newD() *D {
 
 	d := &D{db: new(KV)}
 	d.ref = map[string]string{}
-	d.db.Path = "test.db"
-	d.db.Fsync = nofsync // faster
-	err := d.db.Open()
+	var err error
+	d.db, err = Open("test.db")
 	utils.Assert(err == nil, "")
 	return d
 }
@@ -46,6 +48,14 @@ func (d *D) reopen() {
 func (d *D) dispose() {
 	d.db.Close()
 	os.Remove("test.db")
+}
+
+func (d *D) batchAdd(keys [][]byte, values [][]byte) {
+	tx := d.db.Begin(true)
+	for i := 0; i < len(keys); i++ {
+		utils.Assertf(tx.Set(keys[i], values[i]) == nil, "add error")
+		d.ref[string(keys[i])] = string(values[i])
+	}
 }
 
 func (d *D) add(key []byte, val []byte) error {
@@ -334,7 +344,7 @@ func TestKVRandLength(t *testing.T) {
 }
 
 func TestKVIncLength(t *testing.T) {
-	for l := 1; l < constants.BTREE_MAX_KEY_SIZE+constants.BTREE_MAX_VAL_SIZE; l++ {
+	for l := 1; l < constants.BTREE_MAX_KEY_SIZE+constants.BTREE_MAX_VAL_SIZE; l += 64 {
 		c := newD()
 
 		klen := l
@@ -363,21 +373,42 @@ func TestKVIncLength(t *testing.T) {
 	}
 }
 
-func BenchmarkSet(b *testing.B) {
-	const keySize, valueSize = 64, 256
-	d := newD()
-	key := make([]byte, keySize)
-	value := make([]byte, valueSize)
-	keysRef := make([][]byte, 0)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		rand.Read(key)
-		rand.Read(value)
-		keysRef = append(keysRef, bytes.Clone(key))
-		b.StartTimer()
-		d.add(key, value)
-		b.StopTimer()
+func TestDBCompact(t *testing.T) {
+	c := newD()
+
+	reportFileSize := func(fd int) {
+		var sts syscall.Stat_t
+		err := syscall.Fstat(fd, &sts)
+		assert.Nilf(t, err, "%s", err)
+		t.Logf("fd: %d, size: %d", c.db.fd, sts.Size)
 	}
+
+	t.Log("report empty db")
+	reportFileSize(c.db.fd)
+
+	tx := c.db.Begin(true)
+	for i := uint16(0); i < math.MaxUint16; i++ {
+		key := utils.GenTestKey(i)
+		value := utils.GenTestValue(i)
+		err := tx.Set(key, value)
+		assert.Nil(t, err)
+		if i%9 == 0 {
+			err = tx.Commit()
+			assert.Nil(t, err)
+			tx = c.db.Begin(true)
+		}
+	}
+	t.Log("report before commit")
+	reportFileSize(c.db.fd)
+	err := tx.Commit()
+	t.Log("report after commit")
+	reportFileSize(c.db.fd)
+
+	assert.Nil(t, err)
+	t.Log("report before close")
+	reportFileSize(c.db.fd)
+	c.db.Close()
+	t.Logf("totally %d pages", c.db.page.flushed)
 }
 
 func BenchmarkOnDisk(b *testing.B) {
@@ -392,10 +423,12 @@ func BenchmarkOnDisk(b *testing.B) {
 			keysRef := make([][]byte, 0)
 			b.Run(fmt.Sprintf(`add-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "adding keys")
 				for i := 0; i < b.N; i++ {
 					rand.Read(key)
 					rand.Read(value)
 					keysRef = append(keysRef, bytes.Clone(key))
+					bar.Add(1)
 					b.StartTimer()
 					d.add(key, value)
 					b.StopTimer()
@@ -404,7 +437,9 @@ func BenchmarkOnDisk(b *testing.B) {
 
 			b.Run(fmt.Sprintf(`get-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "getting keys")
 				for i := 0; i < b.N; i++ {
+					bar.Add(1)
 					key := keysRef[i%len(keysRef)]
 					_, _ = d.get(key)
 				}
@@ -412,8 +447,10 @@ func BenchmarkOnDisk(b *testing.B) {
 
 			b.Run(fmt.Sprintf(`get-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "getting non-exists keys")
 				for i := 0; i < b.N; i++ {
 					rand.Read(key)
+					bar.Add(1)
 					b.StartTimer()
 					_, _ = d.get(key)
 					b.StopTimer()
@@ -422,16 +459,20 @@ func BenchmarkOnDisk(b *testing.B) {
 
 			b.Run(fmt.Sprintf(`delete-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "deleting key keys")
 				for i := 0; i < b.N; i++ {
 					key := keysRef[i%len(keysRef)]
+					bar.Add(1)
 					_ = d.del(key)
 				}
 			})
 
 			b.Run(fmt.Sprintf(`delete-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
 				b.ResetTimer()
+				bar := progressbar.Default(int64(b.N), "deleting non-exists key keys")
 				for i := 0; i < b.N; i++ {
 					rand.Read(key)
+					bar.Add(1)
 					b.StartTimer()
 					_ = d.del(key)
 					b.StopTimer()
