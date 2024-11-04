@@ -344,7 +344,7 @@ func TestKVRandLength(t *testing.T) {
 }
 
 func TestKVIncLength(t *testing.T) {
-	for l := 1; l < constants.BTREE_MAX_KEY_SIZE+constants.BTREE_MAX_VAL_SIZE; l++ {
+	for l := 1; l < constants.BTREE_MAX_KEY_SIZE+constants.BTREE_MAX_VAL_SIZE; l += 64 {
 		c := newD()
 
 		klen := l

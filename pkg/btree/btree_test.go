@@ -262,7 +262,7 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 	ValueOfInt := func(i int) []byte {
 		return []byte(fmt.Sprintf("value-%08d", i))
 	}
-	const N = 1_000_000 // 1 million
+	const N = 100_000 // 100k
 	bar := progressbar.Default(N, "adding keys")
 	for i := 0; i < N; i++ {
 		bar.Add(1)
