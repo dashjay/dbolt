@@ -16,26 +16,26 @@ import (
 
 func TestBtree(t *testing.T) {
 	t.Run("test node merge", func(t *testing.T) {
-		const keyCount uint64 = 20
+		const keyCount uint16 = 20
 		leftNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
 		leftNode.SetHeader(bnode.NodeTypeLeaf, uint16(keyCount))
 		rightNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
 		rightNode.SetHeader(bnode.NodeTypeLeaf, uint16(keyCount))
 
-		for i := uint64(0); i < keyCount; i++ {
-			bnode.NodeAppendKVOrPtr(leftNode, uint16(i), 1, utils.GenTestKey(i), utils.GenTestValue(i))
-			bnode.NodeAppendKVOrPtr(rightNode, uint16(i), 1, utils.GenTestKey(i+keyCount), utils.GenTestValue(i+keyCount))
+		for i := uint16(0); i < keyCount; i++ {
+			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
+			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(uint64(i+keyCount)), utils.GenTestValue(uint64(i+keyCount)))
 		}
 		newNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
 		nodeMerge(newNode, leftNode, rightNode)
 
 		assert.Equal(t, 2*keyCount, newNode.KeyCounts())
 
-		for i := uint64(0); i < keyCount; i++ {
-			assert.Equal(t, utils.GenTestKey(i), newNode.GetKey(uint16(i)))
-			assert.Equal(t, utils.GenTestValue(i), newNode.GetVal(uint16(i)))
-			assert.Equal(t, utils.GenTestKey(i+keyCount), newNode.GetKey(uint16(i+keyCount)))
-			assert.Equal(t, utils.GenTestValue(i+keyCount), newNode.GetVal(uint16(i+keyCount)))
+		for i := uint16(0); i < keyCount; i++ {
+			assert.Equal(t, utils.GenTestKey(uint64(i)), newNode.GetKey(i))
+			assert.Equal(t, utils.GenTestValue(uint64(i)), newNode.GetVal(i))
+			assert.Equal(t, utils.GenTestKey(uint64(i+keyCount)), newNode.GetKey(i+keyCount))
+			assert.Equal(t, utils.GenTestValue(uint64(i+keyCount)), newNode.GetVal(i+keyCount))
 		}
 	})
 

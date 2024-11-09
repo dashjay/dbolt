@@ -153,7 +153,7 @@ func TestBnode(t *testing.T) {
 
 	t.Run("test node split 2 / split 3", func(t *testing.T) {
 		bigNode := make(Node, constants.BTREE_PAGE_SIZE*2)
-		bigNode.SetHeader(NodeTypeLeaf, 191)
+		bigNode.SetHeader(NodeTypeLeaf, 167)
 		for i := uint16(0); i < bigNode.KeyCounts(); i++ {
 			NodeAppendKVOrPtr(bigNode, i, 0, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 		}
