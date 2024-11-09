@@ -36,6 +36,8 @@ type KV struct {
 	failed bool // Did the last update fail?
 
 	txMu sync.RWMutex
+
+	metrics *metrics
 }
 
 // `BTree.get`, read a page.
@@ -43,12 +45,14 @@ func (db *KV) pageRead(ptr uint64) []byte {
 	utils.Assertf(ptr < db.page.flushed+db.page.nappend,
 		"pageRead: ptr(%d) should < db.page.flushed(%d)+db.page.nappend(%d)", ptr, db.page.flushed, db.page.nappend)
 	if node, ok := db.page.updates[ptr]; ok {
+		db.metrics.IncCounterOne(dbCounterPageReadCache)
 		return node // pending update
 	}
 	return db.pageReadFile(ptr)
 }
 
 func (db *KV) pageReadFile(ptr uint64) []byte {
+	db.metrics.IncCounterOne(dbCounterPageReadFromFile)
 	start := uint64(0)
 	for _, chunk := range db.mmap.chunks {
 		end := start + uint64(len(chunk))/constants.BTREE_PAGE_SIZE
@@ -65,6 +69,7 @@ func (db *KV) pageReadFile(ptr uint64) []byte {
 func (db *KV) pageAlloc(node []byte) uint64 {
 	utils.Assertf(len(node) == constants.BTREE_PAGE_SIZE, "pageAlloc: invalid node size: %d", len(node))
 	if ptr := db.free.PopHead(); ptr != 0 { // try the free list
+		db.metrics.IncCounterOne(dbCounterPageAllocFromFreelist)
 		utils.Assertf(db.page.updates[ptr] == nil, "pageAlloc: get invalid ptr %d from freelist", ptr)
 		db.page.updates[ptr] = node
 		return ptr
@@ -80,6 +85,7 @@ func (db *KV) pageAppend(node []byte) uint64 {
 	utils.Assertf(db.page.updates[ptr] == nil,
 		"pageAppend: append new ptr %d but it exists in db.pdage.updates", ptr)
 	db.page.updates[ptr] = node
+	db.metrics.IncCounterOne(dbCounterPageAllocAppend)
 	return ptr
 }
 
@@ -88,11 +94,13 @@ func (db *KV) pageWrite(ptr uint64) []byte {
 	utils.Assertf(ptr < db.page.flushed+db.page.nappend,
 		"pageWrite: ptr(%d) should < db.page.flushed(%d)+db.page.nappend(%d)", ptr, db.page.flushed, db.page.nappend)
 	if node, ok := db.page.updates[ptr]; ok {
+		db.metrics.IncCounterOne(dbCounterPageUpdateFromCache)
 		return node // pending update
 	}
 	node := utils.GetPage()
 	copy(node, db.pageReadFile(ptr)) // initialized from the file
 	db.page.updates[ptr] = node
+	db.metrics.IncCounterOne(dbCounterPageUpdateFromFile)
 	return node
 }
 
@@ -131,7 +139,10 @@ func (db *KV) Open() error {
 	// free list callbacks
 	db.free = freelist.NewFreeList(db.pageRead, db.pageAppend, db.pageWrite)
 	// B+tree callbacks
-	db.tree = btree.NewTree(db.pageRead, db.pageAlloc, db.free.PushTail)
+	db.tree = btree.NewTree(db.pageRead, db.pageAlloc, func(u uint64) {
+		db.metrics.IncCounterOne(dbCounterFreelistPushTail)
+		db.free.PushTail(u)
+	})
 
 	// open or create the DB file
 	if db.fd, err = createFileSync(db.Path); err != nil {
@@ -150,6 +161,7 @@ func (db *KV) Open() error {
 	if err = readRoot(db, finfo.Size); err != nil {
 		goto fail
 	}
+	db.metrics = newMetrics()
 	return nil
 	// error
 fail:
@@ -226,9 +238,10 @@ func readRoot(db *KV, fileSize int64) error {
 	return nil
 }
 
-// update the meta page. it must be atomic.
+// update the root meta page. it must be atomic.
 func updateRoot(db *KV) error {
 	// NOTE: atomic?
+	db.metrics.IncCounterOne(dbCounterPWrite)
 	if _, err := syscall.Pwrite(db.fd, saveMeta(db), 0); err != nil {
 		return fmt.Errorf("write meta page: %w", err)
 	}
@@ -262,6 +275,7 @@ func updateFile(db *KV) error {
 		return err
 	}
 	// 2. `fsync` to enforce the order between 1 and 3.
+	db.metrics.IncCounterOne(dbCounterFsync)
 	if err := db.Fsync(db.fd); err != nil {
 		return err
 	}
@@ -270,6 +284,7 @@ func updateFile(db *KV) error {
 		return err
 	}
 	// 4. `fsync` to make everything persistent.
+	db.metrics.IncCounterOne(dbCounterFsync)
 	if err := db.Fsync(db.fd); err != nil {
 		return err
 	}
@@ -287,6 +302,7 @@ func writePages(db *KV) error {
 	// write data pages to the file
 	for ptr, node := range db.page.updates {
 		offset := int64(ptr * constants.BTREE_PAGE_SIZE)
+		db.metrics.IncCounterOne(dbCounterPWrite)
 		if _, err := unix.Pwrite(db.fd, node, offset); err != nil {
 			return err
 		}
@@ -318,7 +334,7 @@ func (db *KV) Begin(writable bool) *Tx {
 }
 
 func Open(fp string) (*KV, error) {
-	db := &KV{Path: fp}
+	db := &KV{Path: fp, metrics: newMetrics()}
 	err := db.Open()
 
 	// start an empty write transaction

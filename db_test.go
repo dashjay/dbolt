@@ -50,14 +50,6 @@ func (d *D) dispose() {
 	os.Remove("test.db")
 }
 
-func (d *D) batchAdd(keys [][]byte, values [][]byte) {
-	tx := d.db.Begin(true)
-	for i := 0; i < len(keys); i++ {
-		utils.Assertf(tx.Set(keys[i], values[i]) == nil, "add error")
-		d.ref[string(keys[i])] = string(values[i])
-	}
-}
-
 func (d *D) add(key []byte, val []byte) error {
 	tx := d.db.Begin(true)
 	utils.Assertf(tx.Set(key, val) == nil, "add error")
@@ -80,7 +72,6 @@ func (d *D) del(key []byte) bool {
 	defer func() {
 		err := tx.Commit()
 		utils.Assertf(err == nil, "commit on transaction failed: %s", err)
-
 	}()
 	deleted, err := tx.Del(key)
 	utils.Assert(err == nil, "")
@@ -208,7 +199,7 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	c.add([]byte("k"), []byte("v"))
 	c.verify(t)
 
-	// insert
+	c.db.metrics = newMetrics()
 	for i := 0; i < 25000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(-i))))
@@ -217,6 +208,10 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 			c.verify(t)
 		}
 	}
+	fmt.Fprintf(os.Stdout, "insert 25000 keys, report metrics: ")
+	c.db.metrics.ReportMetrics()
+	c.db.metrics = newMetrics()
+
 	c.verify(t)
 	if reopen {
 		c.reopen()
@@ -225,10 +220,13 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	t.Log("insertion done")
 
 	// del
-	for i := 2000; i < 25000; i++ {
+	c.db.metrics = newMetrics()
+	for i := 0; i < 25000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		assert.True(t, c.del(key))
 	}
+	fmt.Fprintf(os.Stdout, "delete 25000 keys, report metrics: ")
+	c.db.metrics.ReportMetrics()
 	c.verify(t)
 	if reopen {
 		c.reopen()

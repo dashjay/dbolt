@@ -85,10 +85,12 @@ func (this *Tree) Delete(key []byte) bool {
 	if this.root == 0 {
 		return false
 	}
-	newNode := this._treeDelete(this.getNode(this.root), key)
+	oldNode := this.getNode(this.root)
+	newNode := this._treeDelete(oldNode, key)
 	if len(newNode) == 0 {
 		return false
 	}
+	this.delNode(this.root)
 	this.root = this.newNode(newNode)
 	return true
 }

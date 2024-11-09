@@ -60,9 +60,11 @@ func (t *Tx) commitOrRollback() error {
 }
 
 func (t *Tx) rewriteMetaPage() error {
+	t.db.metrics.IncCounterOne(dbCounterPWrite)
 	if _, err := syscall.Pwrite(t.db.fd, t.oldMeta, 0); err != nil {
 		return fmt.Errorf("rewrite meta page: %w", err)
 	}
+	t.db.metrics.IncCounterOne(dbCounterFsync)
 	if err := t.db.Fsync(t.db.fd); err != nil {
 		return err
 	}
