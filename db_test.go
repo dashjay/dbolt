@@ -1,7 +1,6 @@
 package dbolt
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
 	"math"
@@ -385,7 +384,7 @@ func TestDBCompact(t *testing.T) {
 	reportFileSize(c.db.fd)
 
 	tx := c.db.Begin(true)
-	for i := uint16(0); i < math.MaxUint16; i++ {
+	for i := uint64(0); i < math.MaxUint16; i++ {
 		key := utils.GenTestKey(i)
 		value := utils.GenTestValue(i)
 		err := tx.Set(key, value)
@@ -410,72 +409,53 @@ func TestDBCompact(t *testing.T) {
 }
 
 func BenchmarkOnDisk(b *testing.B) {
-	var runOnKeySize = []uint64{64 /*512, constants.BTREE_MAX_KEY_SIZE*/}
-	var runOnValueSize = []uint64{256 /*1024, constants.BTREE_MAX_VAL_SIZE*/}
-
-	for _, keySize := range runOnKeySize {
-		for _, valueSize := range runOnValueSize {
-			d := newD()
-			key := make([]byte, keySize)
-			value := make([]byte, valueSize)
-			keysRef := make([][]byte, 0)
-			b.Run(fmt.Sprintf(`add-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "adding keys")
-				for i := 0; i < b.N; i++ {
-					rand.Read(key)
-					rand.Read(value)
-					keysRef = append(keysRef, bytes.Clone(key))
-					bar.Add(1)
-					b.StartTimer()
-					d.add(key, value)
-					b.StopTimer()
-				}
-			})
-
-			b.Run(fmt.Sprintf(`get-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "getting keys")
-				for i := 0; i < b.N; i++ {
-					bar.Add(1)
-					key := keysRef[i%len(keysRef)]
-					_, _ = d.get(key)
-				}
-			})
-
-			b.Run(fmt.Sprintf(`get-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "getting non-exists keys")
-				for i := 0; i < b.N; i++ {
-					rand.Read(key)
-					bar.Add(1)
-					b.StartTimer()
-					_, _ = d.get(key)
-					b.StopTimer()
-				}
-			})
-
-			b.Run(fmt.Sprintf(`delete-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "deleting key keys")
-				for i := 0; i < b.N; i++ {
-					key := keysRef[i%len(keysRef)]
-					bar.Add(1)
-					_ = d.del(key)
-				}
-			})
-
-			b.Run(fmt.Sprintf(`delete-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "deleting non-exists key keys")
-				for i := 0; i < b.N; i++ {
-					rand.Read(key)
-					bar.Add(1)
-					b.StartTimer()
-					_ = d.del(key)
-					b.StopTimer()
-				}
-			})
+	const N = 100_000
+	d := newD()
+	const reportInterval = 1000
+	reportAndResetMetrics := func(title string) {
+		fmt.Fprintf(os.Stdout, title)
+		d.db.metrics.ReportMetrics()
+		d.db.metrics = newMetrics()
+	}
+	bar := progressbar.Default(int64(N), "adding keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		d.add(utils.GenTestKey(i), utils.GenTestValue(i))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after adding %d keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "getting keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_, _ = d.get(utils.GenTestKey(i))
+		d.get(utils.GenTestKey(i))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "getting non-exists keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_, _ = d.get(append(utils.GenTestKey(i), 'n'))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d non-exists keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "deleting key not exists")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_ = d.del(append(utils.GenTestKey(i), 'n'))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d non-exists keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "deleting keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_ = d.del(utils.GenTestKey(i))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d keys", reportInterval))
 		}
 	}
 }

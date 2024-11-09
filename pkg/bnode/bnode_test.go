@@ -18,12 +18,12 @@ func TestBnode(t *testing.T) {
 	assert.Equal(t, keyCount, originNode.KeyCounts(), "should have %d keys, %d got", keyCount, originNode.KeyCounts())
 
 	for i := uint16(0); i < keyCount; i++ {
-		NodeAppendKVOrPtr(originNode, i, 0, utils.GenTestKey(i), utils.GenTestValue(i))
+		NodeAppendKVOrPtr(originNode, i, 0, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 	}
 
 	for i := uint16(0); i < originNode.KeyCounts(); i++ {
-		assert.Equal(t, utils.GenTestKey(i), originNode.GetKey(i))
-		assert.Equal(t, utils.GenTestValue(i), originNode.GetVal(i))
+		assert.Equal(t, utils.GenTestKey(uint64(i)), originNode.GetKey(i))
+		assert.Equal(t, utils.GenTestValue(uint64(i)), originNode.GetVal(i))
 	}
 
 	t.Logf("originNode bytes: %d", originNode.SizeBytes())
@@ -79,11 +79,11 @@ func TestBnode(t *testing.T) {
 					assert.Equal(t, testKey, tmpNode.GetKey(i))
 					assert.Equal(t, testVal, tmpNode.GetVal(i))
 				} else if i < idx {
-					assert.Equal(t, utils.GenTestKey(i), tmpNode.GetKey(i))
-					assert.Equal(t, utils.GenTestValue(i), tmpNode.GetVal(i))
+					assert.Equal(t, utils.GenTestKey(uint64(i)), tmpNode.GetKey(i))
+					assert.Equal(t, utils.GenTestValue(uint64(i)), tmpNode.GetVal(i))
 				} else {
-					assert.Equal(t, utils.GenTestKey(i-1), tmpNode.GetKey(i))
-					assert.Equal(t, utils.GenTestValue(i-1), tmpNode.GetVal(i))
+					assert.Equal(t, utils.GenTestKey(uint64(i-1)), tmpNode.GetKey(i))
+					assert.Equal(t, utils.GenTestValue(uint64(i-1)), tmpNode.GetVal(i))
 				}
 			}
 		}
@@ -106,8 +106,8 @@ func TestBnode(t *testing.T) {
 					assert.Equal(t, testKey, tmpNode.GetKey(i))
 					assert.Equal(t, testVal, tmpNode.GetVal(i))
 				} else {
-					assert.Equal(t, utils.GenTestKey(i), tmpNode.GetKey(i))
-					assert.Equal(t, utils.GenTestValue(i), tmpNode.GetVal(i))
+					assert.Equal(t, utils.GenTestKey(uint64(i)), tmpNode.GetKey(i))
+					assert.Equal(t, utils.GenTestValue(uint64(i)), tmpNode.GetVal(i))
 				}
 			}
 		}
@@ -123,11 +123,11 @@ func TestBnode(t *testing.T) {
 			assert.Equal(t, keyCount-1, tmpNode.KeyCounts())
 			for i := uint16(0); i < tmpNode.KeyCounts(); i++ {
 				if i < idx {
-					assert.Equal(t, utils.GenTestKey(i), tmpNode.GetKey(i))
-					assert.Equal(t, utils.GenTestValue(i), tmpNode.GetVal(i))
+					assert.Equal(t, utils.GenTestKey(uint64(i)), tmpNode.GetKey(i))
+					assert.Equal(t, utils.GenTestValue(uint64(i)), tmpNode.GetVal(i))
 				} else {
-					assert.Equal(t, utils.GenTestKey(i+1), tmpNode.GetKey(i))
-					assert.Equal(t, utils.GenTestValue(i+1), tmpNode.GetVal(i))
+					assert.Equal(t, utils.GenTestKey(uint64(i+1)), tmpNode.GetKey(i))
+					assert.Equal(t, utils.GenTestValue(uint64(i+1)), tmpNode.GetVal(i))
 				}
 			}
 		}
@@ -139,14 +139,14 @@ func TestBnode(t *testing.T) {
 
 	t.Run("test search", func(t *testing.T) {
 		for i := uint16(0); i < originNode.KeyCounts(); i++ {
-			idx := NodeLookupLE(originNode, utils.GenTestKey(i))
+			idx := NodeLookupLE(originNode, utils.GenTestKey(uint64(i)))
 			assert.Equal(t, i, idx)
 		}
 	})
 
 	t.Run("test bin search", func(t *testing.T) {
 		for i := uint16(0); i < originNode.KeyCounts(); i++ {
-			idx := NodeLookupLEBinary(originNode, utils.GenTestKey(i))
+			idx := NodeLookupLEBinary(originNode, utils.GenTestKey(uint64(i)))
 			assert.Equal(t, i, idx)
 		}
 	})
@@ -155,7 +155,7 @@ func TestBnode(t *testing.T) {
 		bigNode := make(Node, constants.BTREE_PAGE_SIZE*2)
 		bigNode.SetHeader(NodeTypeLeaf, 191)
 		for i := uint16(0); i < bigNode.KeyCounts(); i++ {
-			NodeAppendKVOrPtr(bigNode, i, 0, utils.GenTestKey(i), utils.GenTestValue(i))
+			NodeAppendKVOrPtr(bigNode, i, 0, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 		}
 		// must bigger than one page
 		assert.Greater(t, bigNode.SizeBytes(), uint16(constants.BTREE_PAGE_SIZE))
@@ -167,7 +167,7 @@ func TestBnode(t *testing.T) {
 		nextKey := uint16(0)
 
 		getNextKeys := func() []byte {
-			key := utils.GenTestKey(nextKey)
+			key := utils.GenTestKey(uint64(nextKey))
 			nextKey++
 			return key
 		}
@@ -193,7 +193,7 @@ func TestBnode(t *testing.T) {
 		superBigNode.SetHeader(NodeTypeLeaf, 256)
 
 		for i := uint16(0); i < superBigNode.KeyCounts(); i++ {
-			NodeAppendKVOrPtr(superBigNode, i, 0, utils.GenTestKey(i), utils.GenTestValue(i))
+			NodeAppendKVOrPtr(superBigNode, i, 0, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 		}
 
 		n, nodes = NodeSplit3(superBigNode)
@@ -228,7 +228,7 @@ func BenchmarkNode(b *testing.B) {
 	const keyCount uint16 = 70
 	bnode.SetHeader(NodeTypeLeaf, keyCount)
 	for i := uint16(0); i < keyCount; i++ {
-		NodeAppendKVOrPtr(bnode, i, 1, utils.GenTestKey(i), utils.GenTestValue(i))
+		NodeAppendKVOrPtr(bnode, i, 1, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 	}
 
 	b.Run("benchmark NodeAppendKVOrPtrRange", func(b *testing.B) {
@@ -269,13 +269,13 @@ func BenchmarkNode(b *testing.B) {
 
 	b.Run("benchmark search", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = NodeLookupLE(bnode, utils.GenTestKey(uint16(i%int(keyCount))))
+			_ = NodeLookupLE(bnode, utils.GenTestKey(uint64(i%int(keyCount))))
 		}
 	})
 
 	b.Run("benchmark bin search", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = NodeLookupLEBinary(bnode, utils.GenTestKey(uint16(i%int(keyCount))))
+			_ = NodeLookupLEBinary(bnode, utils.GenTestKey(uint64(i%int(keyCount))))
 		}
 	})
 }

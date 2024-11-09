@@ -16,39 +16,39 @@ import (
 
 func TestBtree(t *testing.T) {
 	t.Run("test node merge", func(t *testing.T) {
-		const keyCount uint16 = 20
+		const keyCount uint64 = 20
 		leftNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
-		leftNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
+		leftNode.SetHeader(bnode.NodeTypeLeaf, uint16(keyCount))
 		rightNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
-		rightNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
+		rightNode.SetHeader(bnode.NodeTypeLeaf, uint16(keyCount))
 
-		for i := uint16(0); i < keyCount; i++ {
-			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(i), utils.GenTestValue(i))
-			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(i+keyCount), utils.GenTestValue(i+keyCount))
+		for i := uint64(0); i < keyCount; i++ {
+			bnode.NodeAppendKVOrPtr(leftNode, uint16(i), 1, utils.GenTestKey(i), utils.GenTestValue(i))
+			bnode.NodeAppendKVOrPtr(rightNode, uint16(i), 1, utils.GenTestKey(i+keyCount), utils.GenTestValue(i+keyCount))
 		}
 		newNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
 		nodeMerge(newNode, leftNode, rightNode)
 
 		assert.Equal(t, 2*keyCount, newNode.KeyCounts())
 
-		for i := uint16(0); i < keyCount; i++ {
-			assert.Equal(t, utils.GenTestKey(i), newNode.GetKey(i))
-			assert.Equal(t, utils.GenTestValue(i), newNode.GetVal(i))
-			assert.Equal(t, utils.GenTestKey(i+keyCount), newNode.GetKey(i+keyCount))
-			assert.Equal(t, utils.GenTestValue(i+keyCount), newNode.GetVal(i+keyCount))
+		for i := uint64(0); i < keyCount; i++ {
+			assert.Equal(t, utils.GenTestKey(i), newNode.GetKey(uint16(i)))
+			assert.Equal(t, utils.GenTestValue(i), newNode.GetVal(uint16(i)))
+			assert.Equal(t, utils.GenTestKey(i+keyCount), newNode.GetKey(uint16(i+keyCount)))
+			assert.Equal(t, utils.GenTestValue(i+keyCount), newNode.GetVal(uint16(i+keyCount)))
 		}
 	})
 
 	ctree := newC()
 
-	for i := uint16(0); i < 4096; i++ {
+	for i := uint64(0); i < 4096; i++ {
 		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 
 		// add the same keys again!
 		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 	}
 
-	idx := uint16(0)
+	idx := uint64(0)
 	next := func() (key []byte, val []byte) {
 		a, b := utils.GenTestKey(idx), utils.GenTestValue(idx)
 		idx++
@@ -61,12 +61,12 @@ func TestBtree(t *testing.T) {
 		assert.Equal(t, expectVal, val)
 	})
 
-	for i := uint16(0); i < 30; i++ {
+	for i := uint64(0); i < 30; i++ {
 		assert.True(t, ctree.del(utils.GenTestKey(i)))
 	}
 
 	// delete key not exists
-	for i := uint16(0); i < 30; i++ {
+	for i := uint64(0); i < 30; i++ {
 		assert.False(t, ctree.del(utils.GenTestKey(i)))
 	}
 
@@ -77,7 +77,7 @@ func TestBtree(t *testing.T) {
 		assert.Equal(t, expectVal, val)
 	})
 
-	for i := uint16(1000); i < 4096; i++ {
+	for i := uint64(1000); i < 4096; i++ {
 		val, ok := ctree.get(utils.GenTestKey(i))
 		assert.True(t, ok)
 		assert.Equal(t, utils.GenTestValue(i), val)
@@ -85,7 +85,7 @@ func TestBtree(t *testing.T) {
 
 	// random delete
 	for i := 1; i < 4096; i++ {
-		key := utils.GenTestKey(uint16(rand.Intn(i)))
+		key := utils.GenTestKey(uint64(rand.Intn(i)))
 		_, exists := ctree.get(key)
 		deleted := ctree.del(key)
 		assert.True(t, exists == deleted)
@@ -112,8 +112,8 @@ func BenchmarkBtree(b *testing.B) {
 		rightNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
-			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(i), utils.GenTestValue(i))
-			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(i+keyCount), utils.GenTestValue(i+keyCount))
+			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
+			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(uint64(i+keyCount)), utils.GenTestValue(uint64(i+keyCount)))
 		}
 
 		b.ResetTimer()
@@ -123,44 +123,44 @@ func BenchmarkBtree(b *testing.B) {
 		}
 	})
 
-	b.Run("benchmark tree add", func(b *testing.B) {
+	const OpCount = 1_000_000 // 1 million
+
+	genTestKey := func(i uint64) []byte {
+		return []byte(fmt.Sprintf("key-%08d", i))
+	}
+
+	genTestValue := func(i uint64) []byte {
+		return []byte(fmt.Sprintf("value-%08d", i))
+	}
+
+	getTree := func() *C {
 		ctree := newC()
-		for i := 0; i < b.N; i++ {
-			idx := uint16(i % constants.BTREE_PAGE_SIZE)
-			ctree.add(utils.GenTestKey(idx), utils.GenTestValue(idx))
+		bar := progressbar.Default(OpCount, "adding data")
+		for i := uint64(0); i < OpCount; i++ {
+			bar.Add(1)
+			ctree.add(genTestKey(i), genTestValue(i))
 		}
-	})
-
-	ctree := newC()
-	for i := uint16(0); i < 4096; i++ {
-		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
+		return ctree
 	}
 
-	b.Run("benchmark tree delete", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			idx := uint16(i % constants.BTREE_PAGE_SIZE)
-			ctree.del(utils.GenTestKey(idx))
-		}
+	var ctree *C
+	b.Run("benchmark tree add", func(b *testing.B) {
+		ctree = getTree()
 	})
-
-	// recover
-	for i := uint16(0); i < 4096; i++ {
-		ctree.add(utils.GenTestKey(i), utils.GenTestValue(i))
-	}
-
 	b.Run("benchmark tree get", func(b *testing.B) {
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_, _ = ctree.get(utils.GenTestKey(uint16(i % 8192)))
+		bar := progressbar.Default(OpCount, "getting data")
+		for i := uint64(0); i < OpCount; i++ {
+			bar.Add(1)
+			_, _ = ctree.get(genTestKey(i))
 		}
 	})
-
-	b.Run("benchmark tree traversal", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			ctree.traversal(func(key []byte, val []byte) {
-				_ = key
-				_ = val
-			})
+	b.Run("benchmark tree delete", func(b *testing.B) {
+		bar := progressbar.Default(OpCount, "deleting data")
+		b.ResetTimer()
+		for i := uint64(0); i < OpCount; i++ {
+			bar.Add(1)
+			ctree.del(genTestKey(i))
 		}
 	})
 }
@@ -318,7 +318,7 @@ func TestTreeCursor(t *testing.T) {
 	cTree := newC()
 
 	const count = math.MaxUint16
-	for i := uint16(0); i < count; i++ {
+	for i := uint64(0); i < count; i++ {
 		cTree.add(utils.GenTestKey(i), utils.GenTestValue(i))
 	}
 
@@ -327,7 +327,7 @@ func TestTreeCursor(t *testing.T) {
 	assert.Equal(t, utils.GenTestKey(0), key)
 	assert.Equal(t, utils.GenTestValue(0), value)
 
-	for i := uint16(1); i < count; i++ {
+	for i := uint64(1); i < count; i++ {
 		key, value = cursor.Next()
 		assert.Equal(t, utils.GenTestKey(i), key)
 		assert.Equal(t, utils.GenTestValue(i), value)
@@ -341,8 +341,8 @@ func TestTreeCursor(t *testing.T) {
 
 	for i := uint16(math.MaxUint16/2 + 1); i < math.MaxUint16; i++ {
 		key, value = cursor.Next()
-		assert.Equal(t, utils.GenTestKey(i), key)
-		assert.Equal(t, utils.GenTestValue(i), value)
+		assert.Equal(t, utils.GenTestKey(uint64(i)), key)
+		assert.Equal(t, utils.GenTestValue(uint64(i)), value)
 	}
 
 	keyNotExists := append(utils.GenTestKey(math.MaxUint16/2), '0')
