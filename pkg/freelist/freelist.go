@@ -138,7 +138,7 @@ func (fl *List) PushTail(ptr uint64) {
 		next, head := flPop(fl) // may remove the head node
 		if next == 0 {
 			// or allocate a new node by appending
-			next = fl.newNode(utils.GetPage())
+			next = fl.newNode(utils.GetPage(constants.BTREE_PAGE_SIZE))
 		}
 		// link to the new tail node
 		LNode(fl.setNode(fl.tailPage)).setNext(next)

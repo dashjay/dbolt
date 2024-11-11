@@ -19,8 +19,8 @@ type L struct {
 
 func newL() *L {
 	pages := map[uint64][]byte{}
-	pages[1] = utils.GetPage() // initial node
-	nextPageID := uint64(1000) // [1000, 10000)
+	pages[1] = utils.GetPage(constants.BTREE_PAGE_SIZE) // initial node
+	nextPageID := uint64(1000)                          // [1000, 10000)
 
 	getNode := func(ptr uint64) []byte {
 		utils.Assertf(pages[ptr] != nil, "pages[%d] should not be nil", ptr)
@@ -47,7 +47,7 @@ func newL() *L {
 
 func (l *L) push(ptr uint64) {
 	utils.Assertf(l.pages[ptr] == nil, "push on non-empty page %d", ptr)
-	l.pages[ptr] = utils.GetPage()
+	l.pages[ptr] = utils.GetPage(constants.BTREE_PAGE_SIZE)
 	l.free.PushTail(ptr)
 	l.added = append(l.added, ptr)
 }

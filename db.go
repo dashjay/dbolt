@@ -97,7 +97,7 @@ func (db *KV) pageWrite(ptr uint64) []byte {
 		db.metrics.IncCounterOne(dbCounterPageUpdateFromCache)
 		return node // pending update
 	}
-	node := utils.GetPage()
+	node := utils.GetPage(constants.BTREE_PAGE_SIZE)
 	copy(node, db.pageReadFile(ptr)) // initialized from the file
 	db.page.updates[ptr] = node
 	db.metrics.IncCounterOne(dbCounterPageUpdateFromFile)
