@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dashjay/dbolt"
+	"github.com/pkg/profile"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
@@ -17,6 +18,11 @@ var (
 )
 
 func main() {
+	p := profile.Start(profile.CPUProfile,
+		profile.ProfilePath("db-pprof"),
+		profile.NoShutdownHook,
+	)
+	defer p.Stop()
 	cmd := NewDBCommand()
 	err := cmd.Execute()
 	if err != nil {
