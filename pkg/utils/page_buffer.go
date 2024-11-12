@@ -7,18 +7,25 @@ import (
 )
 
 const (
-	maxPageBufferSize = 6
+	maxPageBufferSize = 4
 )
 
 //nolint:gochecknoglobals // page buffers
-var _pageBuffers [maxPageBufferSize + 1]sync.Pool
+var _pageBuffers [maxPageBufferSize + 1]*sync.Pool
 
 //nolint:gochecknoinits // init page buffers
 func init() {
-	for i := 1; i <= maxPageBufferSize; i++ {
-		_pageBuffers[i] = sync.Pool{New: func() interface{} {
-			return make([]byte, constants.BtreePageSize*i)
-		}}
+	initPageBuffer()
+}
+
+func initPageBuffer() {
+	for i := 1; i < maxPageBufferSize; i++ {
+		count := i
+		_pageBuffers[i] = &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, count*constants.BtreePageSize)
+			},
+		}
 	}
 }
 
