@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"os"
@@ -191,7 +192,8 @@ func NewCreateDBCommand() *cobra.Command {
 func NewScanDBCommand() *cobra.Command {
 	cmd := new(cobra.Command)
 	cmd.Use = "scan"
-
+	startKey := cmd.Flags().String("start-key", "", "start key")
+	endKey := cmd.Flags().String("end-key", "", "end key")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		i := 0
 		handleOne := func(key, value []byte) {
@@ -214,9 +216,18 @@ func NewScanDBCommand() *cobra.Command {
 				panic(err)
 			}
 		}()
+
+		var endKeyPtr []byte = nil
+		if *endKey != "" {
+			endKeyPtr = []byte(*endKey)
+		}
+
 		cursor := tx.Cursor()
-		for key, value := cursor.SeekToFirst(); key != nil; key, value = cursor.Next() {
+		for key, value := cursor.Seek([]byte(*startKey)); key != nil; key, value = cursor.Next() {
 			handleOne(key, value)
+			if endKeyPtr != nil && bytes.Compare(key, endKeyPtr) >= 0 {
+				break
+			}
 		}
 		return nil
 	}
