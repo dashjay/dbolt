@@ -7,11 +7,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/pkg/profile"
-	"github.com/schollz/progressbar/v3"
-	"github.com/spf13/cobra"
-
 	"github.com/dashjay/dbolt"
+	"github.com/pkg/profile"
+	"github.com/schollz/progressbar/v2"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -58,7 +57,7 @@ func NewAppendDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "appending to db")
+		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("appending to db"))
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -103,7 +102,7 @@ func NewDeleteCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "deleting db")
+		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("deleting db"))
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -148,7 +147,7 @@ func NewCreateDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "creating db")
+		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("creating db"))
 		_, err := os.Stat(dbPath)
 		if err == nil {
 			return fmt.Errorf("create db error, db %s already exists", dbPath)
