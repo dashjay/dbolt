@@ -69,24 +69,16 @@ func (c *Counter) add(v uint64) {
 	atomic.AddUint64(&c.v, v)
 }
 
-func (c *Counter) reset() {
-	atomic.StoreUint64(&c.v, 0)
-}
-
 func (m *metrics) _initCounter(metric string) {
 	m.Counters[metric] = new(Counter)
 }
 
 func (m *metrics) IncCounterOne(metric string) {
-	m.Counters[metric].add(1)
+	m.IncCounter(metric, 1)
 }
 
 func (m *metrics) IncCounter(metric string, value uint64) {
 	m.Counters[metric].add(value)
-}
-
-func (m *metrics) ResetCounter(metric string) {
-	m.Counters[metric].reset()
 }
 
 func (m *metrics) ReportMetrics() {
