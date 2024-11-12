@@ -199,7 +199,7 @@ func (tree *Tree) shouldMerge(node bnode.Node, idx uint16, updated bnode.Node) (
 
 func nodeMerge(newNode bnode.Node, leftNode bnode.Node, rightNode bnode.Node) {
 	mergedSize := leftNode.SizeBytes() + rightNode.SizeBytes() - constants.BNodeHeader
-	utils.Assertf(mergedSize < constants.BtreePageSize, "assertion failed: node merged size is too large: %d", mergedSize)
+	utils.Assertf(mergedSize <= constants.BtreePageSize, "assertion failed: node merged size is too large: %d", mergedSize)
 
 	newNode.SetHeader(leftNode.Type(), leftNode.KeyCounts()+rightNode.KeyCounts())
 	bnode.NodeAppendKVOrPtrRange(newNode, leftNode, 0, 0, leftNode.KeyCounts())
