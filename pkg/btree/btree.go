@@ -308,6 +308,9 @@ func (tree *Tree) NewTreeCursor() *TreeCursor {
 }
 
 func (c *TreeCursor) SeekToFirst() ([]byte, []byte) {
+	if c.tree.Root() == 0 {
+		return nil, nil
+	}
 	c.stack = &utils.Stack[nodeRef]{}
 	c.stack.Push(nodeRef{node: c.tree.root, idx: 0})
 	for !c.stack.Empty() {
@@ -333,6 +336,9 @@ func (c *TreeCursor) SeekToFirst() ([]byte, []byte) {
 }
 
 func (c *TreeCursor) Seek(key []byte) ([]byte, []byte) {
+	if c.tree.Root() == 0 {
+		return nil, nil
+	}
 	c.stack = &utils.Stack[nodeRef]{}
 	rootNode := bnode.Node(c.tree.getNode(c.tree.Root()))
 	idx := bnode.NodeLookupLE(rootNode, key)

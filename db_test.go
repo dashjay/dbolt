@@ -2,6 +2,7 @@ package dbolt
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -50,19 +51,20 @@ func (d *D) dispose() {
 }
 
 func (d *D) add(key []byte, val []byte) error {
-	tx := d.db.Begin(true)
-	utils.Assertf(tx.Set(key, val) == nil, "add error")
 	d.ref[string(key)] = string(val)
-	return tx.Commit()
+	return d.db.Update(func(tx *Tx) error {
+		return tx.Set(key, val)
+	})
 }
 
-func (d *D) get(key []byte) ([]byte, bool) {
-	tx := d.db.Begin(false)
-	defer func() {
-		err := tx.Commit()
-		utils.Assertf(err == nil, "commit on transaction failed: %s", err)
-	}()
-	return tx.Get(key)
+func (d *D) get(key []byte) (val []byte, exists bool) {
+	err := d.db.View(func(tx *Tx) error {
+		val, exists = tx.Get(key)
+		return nil
+	})
+
+	utils.Assertf(err == nil, "View failed: %s", err)
+	return
 }
 
 func (d *D) del(key []byte) bool {
@@ -70,7 +72,7 @@ func (d *D) del(key []byte) bool {
 	tx := d.db.Begin(true)
 	defer func() {
 		err := tx.Commit()
-		utils.Assertf(err == nil, "commit on transaction failed: %s", err)
+		utils.Assertf(err == nil, "_commit on transaction failed: %s", err)
 	}()
 	deleted, err := tx.Del(key)
 	utils.Assert(err == nil, "")
@@ -196,6 +198,24 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	defer c.dispose()
 
 	assert.Nil(t, c.add([]byte("k"), []byte("v")))
+	t.Run("test error path", func(t *testing.T) {
+		err := c.db.View(func(tx *Tx) error {
+			return errors.New("view error")
+		})
+		assert.NotNil(t, err)
+		err = c.db.Update(func(tx *Tx) error {
+			return errors.New("update error")
+		})
+		assert.NotNil(t, err)
+	})
+
+	t.Run("test recovery", func(t *testing.T) {
+		c.db.failed = true
+		err := c.db.Update(func(tx *Tx) error {
+			return tx.Set([]byte("k"), []byte("v"))
+		})
+		assert.Nil(t, err)
+	})
 	c.verify(t)
 
 	c.db.metrics = newMetrics()
@@ -398,10 +418,10 @@ func TestDBCompact(t *testing.T) {
 			tx = c.db.Begin(true)
 		}
 	}
-	t.Log("report before commit")
+	t.Log("report before _commit")
 	reportFileSize(c.db.fd)
 	err := tx.Commit()
-	t.Log("report after commit")
+	t.Log("report after _commit")
 	reportFileSize(c.db.fd)
 
 	assert.Nil(t, err)
