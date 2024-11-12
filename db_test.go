@@ -13,7 +13,7 @@ import (
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/freelist"
 	"github.com/dashjay/dbolt/pkg/utils"
-	"github.com/schollz/progressbar/v3"
+	"github.com/schollz/progressbar/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -420,7 +420,7 @@ func BenchmarkOnDisk(b *testing.B) {
 		d.db.metrics.ReportMetrics()
 		d.db.metrics = newMetrics()
 	}
-	bar := progressbar.Default(int64(N), "adding keys")
+	bar := progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("adding keys"))
 	for i := uint64(0); i < N; i++ {
 		bar.Add(1)
 		d.add(utils.GenTestKey(i), utils.GenTestValue(i))
@@ -428,7 +428,7 @@ func BenchmarkOnDisk(b *testing.B) {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after adding %d keys", reportInterval))
 		}
 	}
-	bar = progressbar.Default(int64(N), "getting keys")
+	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("getting keys"))
 	for i := uint64(0); i < N; i++ {
 		bar.Add(1)
 		_, _ = d.get(utils.GenTestKey(i))
@@ -437,7 +437,7 @@ func BenchmarkOnDisk(b *testing.B) {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d keys", reportInterval))
 		}
 	}
-	bar = progressbar.Default(int64(N), "getting non-exists keys")
+	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("getting non-exists keys"))
 	for i := uint64(0); i < N; i++ {
 		bar.Add(1)
 		_, _ = d.get(append(utils.GenTestKey(i), 'n'))
@@ -445,7 +445,7 @@ func BenchmarkOnDisk(b *testing.B) {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d non-exists keys", reportInterval))
 		}
 	}
-	bar = progressbar.Default(int64(N), "deleting key not exists")
+	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("deleting key not exists"))
 	for i := uint64(0); i < N; i++ {
 		bar.Add(1)
 		_ = d.del(append(utils.GenTestKey(i), 'n'))
@@ -453,7 +453,7 @@ func BenchmarkOnDisk(b *testing.B) {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d non-exists keys", reportInterval))
 		}
 	}
-	bar = progressbar.Default(int64(N), "deleting keys")
+	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("deleting keys"))
 	for i := uint64(0); i < N; i++ {
 		bar.Add(1)
 		_ = d.del(utils.GenTestKey(i))

@@ -10,7 +10,7 @@ import (
 	"github.com/dashjay/dbolt/pkg/bnode"
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/utils"
-	"github.com/schollz/progressbar/v3"
+	"github.com/schollz/progressbar/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -135,7 +135,7 @@ func BenchmarkBtree(b *testing.B) {
 
 	getTree := func() *C {
 		ctree := newC()
-		bar := progressbar.Default(OpCount, "adding data")
+		bar := progressbar.NewOptions64(OpCount, progressbar.OptionSetDescription("adding data"))
 		for i := uint64(0); i < OpCount; i++ {
 			_ = bar.Add(1)
 			ctree.add(genTestKey(i), genTestValue(i))
@@ -149,14 +149,14 @@ func BenchmarkBtree(b *testing.B) {
 	})
 	b.Run("benchmark tree get", func(b *testing.B) {
 		b.ResetTimer()
-		bar := progressbar.Default(OpCount, "getting data")
+		bar := progressbar.NewOptions64(OpCount, progressbar.OptionSetDescription("getting data"))
 		for i := uint64(0); i < OpCount; i++ {
 			_ = bar.Add(1)
 			_, _ = ctree.get(genTestKey(i))
 		}
 	})
 	b.Run("benchmark tree delete", func(b *testing.B) {
-		bar := progressbar.Default(OpCount, "deleting data")
+		bar := progressbar.NewOptions64(OpCount, progressbar.OptionSetDescription("deleting data"))
 		b.ResetTimer()
 		for i := uint64(0); i < OpCount; i++ {
 			_ = bar.Add(1)
@@ -263,13 +263,13 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 		return []byte(fmt.Sprintf("value-%08d", i))
 	}
 	const N = 100_000 // 100k
-	bar := progressbar.Default(N, "adding keys")
+	bar := progressbar.NewOptions(N, progressbar.OptionSetDescription("adding keys"))
 	for i := 0; i < N; i++ {
 		bar.Add(1)
 		cTree.add(KeyOfInt(i), ValueOfInt(i))
 	}
 
-	bar = progressbar.Default(N, "getting keys")
+	bar = progressbar.NewOptions(N, progressbar.OptionSetDescription("getting keys"))
 
 	for i := 0; i < N; i++ {
 		bar.Add(1)
@@ -289,7 +289,7 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 		return KeyOfInt(idx), ValueOfInt(idx)
 	}
 
-	bar = progressbar.Default(N, "iter keys")
+	bar = progressbar.NewOptions(N, progressbar.OptionSetDescription("iter keys"))
 	cursor := cTree.tree.NewTreeCursor()
 
 	for key, value := cursor.SeekToFirst(); key != nil; key, value = cursor.Next() {
@@ -299,14 +299,14 @@ func TestBTreeWithProgressingBar(t *testing.T) {
 		assert.Equal(t, expectVal, value)
 	}
 
-	bar = progressbar.Default(N, "del keys")
+	bar = progressbar.NewOptions(N, progressbar.OptionSetDescription("del keys"))
 	for i := 0; i < N; i++ {
 		bar.Add(1)
 		deleted := cTree.del(KeyOfInt(i))
 		assert.True(t, deleted)
 	}
 
-	bar = progressbar.Default(N, "del keys again")
+	bar = progressbar.NewOptions(N, progressbar.OptionSetDescription("del keys again"))
 	for i := 0; i < N; i++ {
 		bar.Add(1)
 		deleted := cTree.del(KeyOfInt(i))

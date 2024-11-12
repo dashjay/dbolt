@@ -28,5 +28,6 @@ func (c *Cursor) Next() ([]byte, []byte) {
 }
 
 func (c *Cursor) Seek(key []byte) ([]byte, []byte) {
+	c.cursor = c.tx.db.tree.NewTreeCursor()
 	return c.cursor.Seek(key)
 }

@@ -1,16 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"os"
 	"time"
 
-	"github.com/pkg/profile"
-	"github.com/schollz/progressbar/v3"
-	"github.com/spf13/cobra"
-
 	"github.com/dashjay/dbolt"
+	"github.com/pkg/profile"
+	"github.com/schollz/progressbar/v2"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -57,7 +57,7 @@ func NewAppendDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "appending to db")
+		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("appending to db"))
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -102,7 +102,7 @@ func NewDeleteCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "deleting db")
+		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("deleting db"))
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -147,7 +147,7 @@ func NewCreateDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "creating db")
+		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("creating db"))
 		_, err := os.Stat(dbPath)
 		if err == nil {
 			return fmt.Errorf("create db error, db %s already exists", dbPath)
@@ -191,7 +191,8 @@ func NewCreateDBCommand() *cobra.Command {
 func NewScanDBCommand() *cobra.Command {
 	cmd := new(cobra.Command)
 	cmd.Use = "scan"
-
+	startKey := cmd.Flags().String("start-key", "", "start key")
+	endKey := cmd.Flags().String("end-key", "", "end key")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		i := 0
 		handleOne := func(key, value []byte) {
@@ -214,9 +215,18 @@ func NewScanDBCommand() *cobra.Command {
 				panic(err)
 			}
 		}()
+
+		var endKeyPtr []byte = nil
+		if *endKey != "" {
+			endKeyPtr = []byte(*endKey)
+		}
+
 		cursor := tx.Cursor()
-		for key, value := cursor.SeekToFirst(); key != nil; key, value = cursor.Next() {
+		for key, value := cursor.Seek([]byte(*startKey)); key != nil; key, value = cursor.Next() {
 			handleOne(key, value)
+			if endKeyPtr != nil && bytes.Compare(key, endKeyPtr) >= 0 {
+				break
+			}
 		}
 		return nil
 	}
