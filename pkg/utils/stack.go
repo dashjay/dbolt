@@ -8,9 +8,9 @@ func NewStack[T any]() *Stack[T] {
 	return &Stack[T]{}
 }
 
-func NewStackWithCap[T any](cap int) *Stack[T] {
+func NewStackWithCap[T any](capacity int) *Stack[T] {
 	return &Stack[T]{
-		data: make([]T, 0, cap),
+		data: make([]T, 0, capacity),
 	}
 }
 

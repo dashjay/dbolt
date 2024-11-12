@@ -6,17 +6,28 @@ import (
 	"os"
 	"time"
 
-	"github.com/dashjay/dbolt"
+	"github.com/pkg/profile"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
+
+	"github.com/dashjay/dbolt"
 )
 
 var (
-	DBPath     string
-	BatchCount int64
+	//nolint:gochecknoglobals // global variables in main
+	dbPath string
+	//nolint:gochecknoglobals // global variables in main
+	batchCount int64
 )
 
+const defaultBatchCount = 5
+
 func main() {
+	p := profile.Start(profile.CPUProfile,
+		profile.ProfilePath("db-pprof"),
+		profile.NoShutdownHook,
+	)
+	defer p.Stop()
 	cmd := NewDBCommand()
 	err := cmd.Execute()
 	if err != nil {
@@ -33,8 +44,8 @@ func NewDBCommand() *cobra.Command {
 		NewAppendDBCommand(),
 		NewDeleteCommand(),
 	)
-	cmd.PersistentFlags().Int64Var(&BatchCount, "batch-count", 10, "count for every transaction")
-	cmd.PersistentFlags().StringVar(&DBPath, "db-path", "", "path to database")
+	cmd.PersistentFlags().Int64Var(&batchCount, "batch-count", defaultBatchCount, "count for every transaction")
+	cmd.PersistentFlags().StringVar(&dbPath, "db-path", "", "path to database")
 	return cmd
 }
 
@@ -47,17 +58,17 @@ func NewAppendDBCommand() *cobra.Command {
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		bar := progressbar.Default(*entryCount, "appending to db")
-		_, err := os.Stat(DBPath)
+		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
 		}
-		kv, err := dbolt.Open(DBPath)
+		kv, err := dbolt.Open(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
 		}
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
-			bar.Add(1)
+			_ = bar.Add(1)
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
 			bar.Describe(fmt.Sprintf("append key/value pair: %s/%s", key, value))
@@ -65,7 +76,7 @@ func NewAppendDBCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
 			}
-			if i%BatchCount == 0 {
+			if i%batchCount == 0 {
 				err = tx.Commit()
 				if err != nil {
 					return fmt.Errorf("commit tx error: %s", err)
@@ -92,24 +103,24 @@ func NewDeleteCommand() *cobra.Command {
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		bar := progressbar.Default(*entryCount, "deleting db")
-		_, err := os.Stat(DBPath)
+		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
 		}
-		kv, err := dbolt.Open(DBPath)
+		kv, err := dbolt.Open(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
 		}
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
-			bar.Add(1)
+			_ = bar.Add(1)
 			bar.Describe(fmt.Sprintf("delete key: %s", key))
 			_, err = tx.Del(key)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
 			}
-			if i%BatchCount == 0 {
+			if i%batchCount == 0 {
 				err = tx.Commit()
 				if err != nil {
 					return fmt.Errorf("commit tx error: %s", err)
@@ -137,14 +148,14 @@ func NewCreateDBCommand() *cobra.Command {
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		bar := progressbar.Default(*entryCount, "creating db")
-		_, err := os.Stat(DBPath)
+		_, err := os.Stat(dbPath)
 		if err == nil {
-			return fmt.Errorf("create db error, db %s already exists", DBPath)
+			return fmt.Errorf("create db error, db %s already exists", dbPath)
 		}
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("create db error: %s", err)
 		}
-		kv, err := dbolt.Open(DBPath)
+		kv, err := dbolt.Open(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
 		}
@@ -153,12 +164,12 @@ func NewCreateDBCommand() *cobra.Command {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
 			bar.Describe(fmt.Sprintf("insert key/value pair: %s/%s", key, value))
-			bar.Add(1)
+			_ = bar.Add(1)
 			err = tx.Set(key, value)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
 			}
-			if i%BatchCount == 0 {
+			if i%batchCount == 0 {
 				err = tx.Commit()
 				if err != nil {
 					return fmt.Errorf("commit tx error: %s", err)
@@ -192,12 +203,17 @@ func NewScanDBCommand() *cobra.Command {
 		defer func() {
 			fmt.Printf("%d key scanned in %.2f sec, %.2f per sec", i, time.Since(start).Seconds(), float64(i)/time.Since(start).Seconds())
 		}()
-		kv, err := dbolt.Open(DBPath)
+		kv, err := dbolt.Open(dbPath)
 		if err != nil {
 			return err
 		}
 		tx := kv.Begin(false)
-		defer tx.Commit()
+		defer func() {
+			err = tx.Commit()
+			if err != nil {
+				panic(err)
+			}
+		}()
 		cursor := tx.Cursor()
 		for key, value := cursor.SeekToFirst(); key != nil; key, value = cursor.Next() {
 			handleOne(key, value)

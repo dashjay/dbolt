@@ -12,7 +12,7 @@ func TestCursor(t *testing.T) {
 	c := newD()
 	defer c.dispose()
 
-	for i := uint16(0); i < math.MaxUint16; i++ {
+	for i := uint64(0); i < math.MaxUint16; i++ {
 		err := c.add(utils.GenTestKey(i), utils.GenTestValue(i))
 		assert.Nil(t, err)
 	}
@@ -25,7 +25,7 @@ func TestCursor(t *testing.T) {
 	assert.Equal(t, utils.GenTestKey(0), key)
 	assert.Equal(t, utils.GenTestValue(0), value)
 
-	for i := uint16(1); i < math.MaxUint16; i++ {
+	for i := uint64(1); i < math.MaxUint16; i++ {
 		key, value = cursor.Next()
 		assert.Equal(t, utils.GenTestKey(i), key)
 		assert.Equal(t, utils.GenTestValue(i), value)
@@ -37,7 +37,7 @@ func TestCursor(t *testing.T) {
 	assert.Equal(t, key, utils.GenTestKey(math.MaxUint16/2))
 	assert.Equal(t, value, utils.GenTestValue(math.MaxUint16/2))
 
-	for i := uint16(math.MaxUint16/2 + 1); i < math.MaxUint16; i++ {
+	for i := uint64(math.MaxUint16/2 + 1); i < math.MaxUint16; i++ {
 		key, value = cursor.Next()
 		assert.Equal(t, utils.GenTestKey(i), key)
 		assert.Equal(t, utils.GenTestValue(i), value)

@@ -1,6 +1,8 @@
 package dbolt
 
-import "github.com/dashjay/dbolt/pkg/btree"
+import (
+	"github.com/dashjay/dbolt/pkg/btree"
+)
 
 type Cursor struct {
 	tx *Tx

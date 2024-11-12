@@ -6,22 +6,45 @@ import (
 	"github.com/dashjay/dbolt/pkg/constants"
 )
 
-var _pageBuffer = &sync.Pool{
-	New: func() interface{} {
-		return make([]byte, constants.BTREE_PAGE_SIZE)
-	},
+const (
+	maxPageBufferSize = 4
+)
+
+//nolint:gochecknoglobals // page buffers
+var _pageBuffers [maxPageBufferSize + 1]*sync.Pool
+
+//nolint:gochecknoinits // init page buffers
+func init() {
+	initPageBuffer()
 }
 
-func GetPage() []byte {
-	return _pageBuffer.Get().([]byte)
+func initPageBuffer() {
+	for i := 1; i < maxPageBufferSize; i++ {
+		count := i
+		_pageBuffers[i] = &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, count*constants.BtreePageSize)
+			},
+		}
+	}
+}
+
+func GetPage(pageSize int) []byte {
+	Assertf(pageSize%constants.BtreePageSize == 0, "the requested memory size %d is not an integer multiple of page size", pageSize)
+	index := pageSize / constants.BtreePageSize
+	Assertf(index <= maxPageBufferSize, "the requested memory is too large: %d", pageSize)
+	return _pageBuffers[index].Get().([]byte)
 }
 
 func PutPage(page []byte) {
-	memsetRepeat(page, 0)
-	_pageBuffer.Put(page)
+	Assertf(cap(page)%constants.BtreePageSize == 0, "the requested memory size %d is not an integer multiple of page size", cap(page))
+	index := cap(page) / constants.BtreePageSize
+	Assertf(index <= maxPageBufferSize, "the requested memory is too large: %d", cap(page))
+	//nolint:staticcheck // bytes slice buffer
+	_pageBuffers[index].Put(page[:cap(page)])
 }
 
-func memsetRepeat(a []byte, v byte) {
+/*func memsetRepeat(a []byte, v byte) {
 	if len(a) == 0 {
 		return
 	}
@@ -29,4 +52,4 @@ func memsetRepeat(a []byte, v byte) {
 	for bp := 1; bp < len(a); bp *= 2 {
 		copy(a[bp:], a[:bp])
 	}
-}
+}*/

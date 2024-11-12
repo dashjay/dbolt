@@ -1,11 +1,19 @@
 package constants
 
-const BNODE_HEADER = 4
+import "encoding/binary"
 
-const BTREE_PAGE_SIZE = 4096
-const BTREE_MAX_KEY_SIZE = 1000
-const BTREE_MAX_VAL_SIZE = 3000
+const BNodeHeader = 4
 
-// static_assert BTREE_PAGE_SIZE bigger than page with one max big key and value
-const _ uint = BTREE_PAGE_SIZE -
-	(BNODE_HEADER + 8 + 2 + 4 + BTREE_MAX_KEY_SIZE + BTREE_MAX_VAL_SIZE)
+const BtreePageSize = 4096
+const BtreePageSizeFor2 = BtreePageSize * 2
+const BtreeMaxKeySize = 1000
+const BtreeMaxValSize = 3000
+
+const Uint16Size = 2
+
+// static_assert BtreePageSize bigger than page with one max big key and value
+const _ uint = BtreePageSize -
+	(BNodeHeader + 8 + 2 + 4 + BtreeMaxKeySize + BtreeMaxValSize)
+
+//nolint:gochecknoglobals // avoid to use the wrong binary algorithm
+var BinaryAlgorithm = binary.LittleEndian

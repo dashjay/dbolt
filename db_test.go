@@ -1,7 +1,6 @@
 package dbolt
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
 	"math"
@@ -50,14 +49,6 @@ func (d *D) dispose() {
 	os.Remove("test.db")
 }
 
-func (d *D) batchAdd(keys [][]byte, values [][]byte) {
-	tx := d.db.Begin(true)
-	for i := 0; i < len(keys); i++ {
-		utils.Assertf(tx.Set(keys[i], values[i]) == nil, "add error")
-		d.ref[string(keys[i])] = string(values[i])
-	}
-}
-
 func (d *D) add(key []byte, val []byte) error {
 	tx := d.db.Begin(true)
 	utils.Assertf(tx.Set(key, val) == nil, "add error")
@@ -80,7 +71,6 @@ func (d *D) del(key []byte) bool {
 	defer func() {
 		err := tx.Commit()
 		utils.Assertf(err == nil, "commit on transaction failed: %s", err)
-
 	}()
 	deleted, err := tx.Del(key)
 	utils.Assert(err == nil, "")
@@ -205,18 +195,22 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	c := newD()
 	defer c.dispose()
 
-	c.add([]byte("k"), []byte("v"))
+	assert.Nil(t, c.add([]byte("k"), []byte("v")))
 	c.verify(t)
 
-	// insert
+	c.db.metrics = newMetrics()
 	for i := 0; i < 25000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(-i))))
-		c.add(key, val)
+		assert.Nil(t, c.add(key, val))
 		if i < 2000 {
 			c.verify(t)
 		}
 	}
+	fmt.Fprintf(os.Stdout, "insert 25000 keys, report metrics: ")
+	c.db.metrics.ReportMetrics()
+	c.db.metrics = newMetrics()
+
 	c.verify(t)
 	if reopen {
 		c.reopen()
@@ -225,10 +219,13 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	t.Log("insertion done")
 
 	// del
-	for i := 2000; i < 25000; i++ {
+	c.db.metrics = newMetrics()
+	for i := 0; i < 25000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		assert.True(t, c.del(key))
 	}
+	fmt.Fprintf(os.Stdout, "delete 25000 keys, report metrics: ")
+	c.db.metrics.ReportMetrics()
 	c.verify(t)
 	if reopen {
 		c.reopen()
@@ -240,7 +237,7 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	for i := 0; i < 2000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(+i))))
-		c.add(key, val)
+		assert.Nil(t, c.add(key, val))
 		c.verify(t)
 	}
 
@@ -328,34 +325,36 @@ func TestKVRandLength(t *testing.T) {
 	defer c.dispose()
 
 	for i := 0; i < 2000; i++ {
-		klen := utils.Murmur32(uint32(2*i+0)) % constants.BTREE_MAX_KEY_SIZE
-		vlen := utils.Murmur32(uint32(2*i+1)) % constants.BTREE_MAX_VAL_SIZE
+		klen := utils.Murmur32(uint32(2*i+0)) % constants.BtreeMaxKeySize
+		vlen := utils.Murmur32(uint32(2*i+1)) % constants.BtreeMaxValSize
 		if klen == 0 {
 			continue
 		}
 
 		key := make([]byte, klen)
-		rand.Read(key)
+		_, err := rand.Read(key)
+		assert.Nil(t, err)
 		val := make([]byte, vlen)
-		rand.Read(val)
-		c.add(key, val)
+		_, err = rand.Read(val)
+		assert.Nil(t, err)
+		assert.Nil(t, c.add(key, val))
 		c.verify(t)
 	}
 }
 
 func TestKVIncLength(t *testing.T) {
-	for l := 1; l < constants.BTREE_MAX_KEY_SIZE+constants.BTREE_MAX_VAL_SIZE; l += 64 {
+	for l := 1; l < constants.BtreeMaxKeySize+constants.BtreeMaxValSize; l += 64 {
 		c := newD()
 
 		klen := l
-		if klen > constants.BTREE_MAX_KEY_SIZE {
-			klen = constants.BTREE_MAX_KEY_SIZE
+		if klen > constants.BtreeMaxKeySize {
+			klen = constants.BtreeMaxKeySize
 		}
 		vlen := l - klen
 		key := make([]byte, klen)
 		val := make([]byte, vlen)
 
-		factor := constants.BTREE_PAGE_SIZE / l
+		factor := constants.BtreePageSize / l
 		size := factor * factor * 2
 		if size > 4000 {
 			size = 4000
@@ -364,8 +363,9 @@ func TestKVIncLength(t *testing.T) {
 			size = 10
 		}
 		for i := 0; i < size; i++ {
-			rand.Read(key)
-			c.add(key, val)
+			_, err := rand.Read(key)
+			assert.Nil(t, err)
+			assert.Nil(t, c.add(key, val))
 		}
 		c.verify(t)
 
@@ -387,7 +387,7 @@ func TestDBCompact(t *testing.T) {
 	reportFileSize(c.db.fd)
 
 	tx := c.db.Begin(true)
-	for i := uint16(0); i < math.MaxUint16; i++ {
+	for i := uint64(0); i < math.MaxUint16; i++ {
 		key := utils.GenTestKey(i)
 		value := utils.GenTestValue(i)
 		err := tx.Set(key, value)
@@ -412,72 +412,53 @@ func TestDBCompact(t *testing.T) {
 }
 
 func BenchmarkOnDisk(b *testing.B) {
-	var runOnKeySize = []uint64{64 /*512, constants.BTREE_MAX_KEY_SIZE*/}
-	var runOnValueSize = []uint64{256 /*1024, constants.BTREE_MAX_VAL_SIZE*/}
-
-	for _, keySize := range runOnKeySize {
-		for _, valueSize := range runOnValueSize {
-			d := newD()
-			key := make([]byte, keySize)
-			value := make([]byte, valueSize)
-			keysRef := make([][]byte, 0)
-			b.Run(fmt.Sprintf(`add-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "adding keys")
-				for i := 0; i < b.N; i++ {
-					rand.Read(key)
-					rand.Read(value)
-					keysRef = append(keysRef, bytes.Clone(key))
-					bar.Add(1)
-					b.StartTimer()
-					d.add(key, value)
-					b.StopTimer()
-				}
-			})
-
-			b.Run(fmt.Sprintf(`get-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "getting keys")
-				for i := 0; i < b.N; i++ {
-					bar.Add(1)
-					key := keysRef[i%len(keysRef)]
-					_, _ = d.get(key)
-				}
-			})
-
-			b.Run(fmt.Sprintf(`get-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "getting non-exists keys")
-				for i := 0; i < b.N; i++ {
-					rand.Read(key)
-					bar.Add(1)
-					b.StartTimer()
-					_, _ = d.get(key)
-					b.StopTimer()
-				}
-			})
-
-			b.Run(fmt.Sprintf(`delete-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "deleting key keys")
-				for i := 0; i < b.N; i++ {
-					key := keysRef[i%len(keysRef)]
-					bar.Add(1)
-					_ = d.del(key)
-				}
-			})
-
-			b.Run(fmt.Sprintf(`delete-non-exists-key-%d-value-%d`, keySize, valueSize), func(b *testing.B) {
-				b.ResetTimer()
-				bar := progressbar.Default(int64(b.N), "deleting non-exists key keys")
-				for i := 0; i < b.N; i++ {
-					rand.Read(key)
-					bar.Add(1)
-					b.StartTimer()
-					_ = d.del(key)
-					b.StopTimer()
-				}
-			})
+	const N = 100_000
+	d := newD()
+	const reportInterval = 1000
+	reportAndResetMetrics := func(title string) {
+		fmt.Fprintf(os.Stdout, title)
+		d.db.metrics.ReportMetrics()
+		d.db.metrics = newMetrics()
+	}
+	bar := progressbar.Default(int64(N), "adding keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		d.add(utils.GenTestKey(i), utils.GenTestValue(i))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after adding %d keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "getting keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_, _ = d.get(utils.GenTestKey(i))
+		d.get(utils.GenTestKey(i))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "getting non-exists keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_, _ = d.get(append(utils.GenTestKey(i), 'n'))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d non-exists keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "deleting key not exists")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_ = d.del(append(utils.GenTestKey(i), 'n'))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d non-exists keys", reportInterval))
+		}
+	}
+	bar = progressbar.Default(int64(N), "deleting keys")
+	for i := uint64(0); i < N; i++ {
+		bar.Add(1)
+		_ = d.del(utils.GenTestKey(i))
+		if i%reportInterval == 0 {
+			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d keys", reportInterval))
 		}
 	}
 }
