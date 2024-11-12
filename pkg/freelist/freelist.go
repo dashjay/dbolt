@@ -103,7 +103,7 @@ func (fl *List) assertCheckFreelist() {
 	utils.Assertf(fl.headSeq != fl.tailSeq || fl.headPage == fl.tailPage, "headSeq(%d) should not equal to tailSeq(%d) expect they are in the same page", fl.headSeq, fl.tailSeq)
 }
 
-// get 1 item from the list head. return 0 on failure.
+// PopHead get 1 item from the list head. return 0 on failure.
 func (fl *List) PopHead() uint64 {
 	ptr, head := flPop(fl)
 	if head != 0 { // the empty head node is recycled
@@ -112,24 +112,24 @@ func (fl *List) PopHead() uint64 {
 	return ptr
 }
 
-// remove 1 item from the head node, and remove the head node if empty.
+// flPop remove 1 item from the head node, and remove the head node if empty.
 func flPop(fl *List) (ptr uint64, head uint64) {
 	fl.assertCheckFreelist()
 	if fl.headSeq == fl.maxSeq {
 		return 0, 0 // cannot advance
 	}
-	node := LNode(fl.getNode(fl.headPage))
-	ptr = node.getPtr(seq2idx(fl.headSeq))
+	headPageNode := LNode(fl.getNode(fl.headPage))
+	ptr = headPageNode.getPtr(seq2idx(fl.headSeq))
 	fl.headSeq++
-	// move to the next one if the head node is empty
+	// move to the next one if the head headPageNode is empty
 	if seq2idx(fl.headSeq) == 0 {
-		head, fl.headPage = fl.headPage, node.getNext()
+		head, fl.headPage = fl.headPage, headPageNode.getNext()
 		utils.Assert(fl.headPage != 0, "invalid head page")
 	}
 	return
 }
 
-// add 1 item to the tail
+// PushTail add 1 item to the tail
 func (fl *List) PushTail(ptr uint64) {
 	fl.assertCheckFreelist()
 	// add it to the tail node
@@ -154,7 +154,7 @@ func (fl *List) PushTail(ptr uint64) {
 	}
 }
 
-// make the newly added items available for consumption
+// SetMaxSeq make the newly added items available for consumption
 func (fl *List) SetMaxSeq() {
 	fl.maxSeq = fl.tailSeq
 }

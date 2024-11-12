@@ -41,7 +41,7 @@ type KV struct {
 	metrics *metrics
 }
 
-// `BTree.get`, read a page.
+// pageRead return the node in cache or from the file.
 func (db *KV) pageRead(ptr uint64) []byte {
 	utils.Assertf(ptr < db.page.flushed+db.page.nappend,
 		"pageRead: ptr(%d) should < db.page.flushed(%d)+db.page.nappend(%d)", ptr, db.page.flushed, db.page.nappend)
@@ -52,6 +52,7 @@ func (db *KV) pageRead(ptr uint64) []byte {
 	return db.pageReadFile(ptr)
 }
 
+// pageReadFile read a page from file(mmap).
 func (db *KV) pageReadFile(ptr uint64) []byte {
 	db.metrics.IncCounterOne(dbCounterPageReadFromFile)
 	start := uint64(0)
@@ -66,7 +67,7 @@ func (db *KV) pageReadFile(ptr uint64) []byte {
 	panic("bad ptr")
 }
 
-// `BTree.new`, allocate a new page.
+// pageAlloc first try to pop a page ptr from the freelist, if it's empty, append a new page to the end of the file.
 func (db *KV) pageAlloc(node []byte) uint64 {
 	utils.Assertf(len(node) == constants.BtreePageSize, "pageAlloc: invalid node size: %d", len(node))
 	if ptr := db.free.PopHead(); ptr != 0 { // try the free list
@@ -78,7 +79,7 @@ func (db *KV) pageAlloc(node []byte) uint64 {
 	return db.pageAppend(node) // append
 }
 
-// `FreeList.new`, append a new page.
+// pageAppend append a new page to the end of the file.
 func (db *KV) pageAppend(node []byte) uint64 {
 	utils.Assertf(len(node) == constants.BtreePageSize, "pageAppend: invalid node size: %d", len(node))
 	ptr := db.page.flushed + db.page.nappend
@@ -90,7 +91,8 @@ func (db *KV) pageAppend(node []byte) uint64 {
 	return ptr
 }
 
-// `FreeList.set`, update an existing page.
+// pageWrite return the node in cache or from the file.
+// the returned node is in memory will be written to the file when the transaction is committed.
 func (db *KV) pageWrite(ptr uint64) []byte {
 	utils.Assertf(ptr < db.page.flushed+db.page.nappend,
 		"pageWrite: ptr(%d) should < db.page.flushed(%d)+db.page.nappend(%d)", ptr, db.page.flushed, db.page.nappend)
@@ -107,7 +109,7 @@ func (db *KV) pageWrite(ptr uint64) []byte {
 
 const dftPerm = 0o644
 
-// open or create a file and fsync the directory
+// createFileSync open or create a file and fsync the directory
 func createFileSync(file string) (int, error) {
 	// obtain the directory fd
 	flags := os.O_RDONLY | syscall.O_DIRECTORY
@@ -241,9 +243,8 @@ func readRoot(db *KV, fileSize int64) error {
 	return nil
 }
 
-// update the root meta page. it must be atomic.
+// updateRoot update the root meta page.
 func updateRoot(db *KV) error {
-	// NOTE: atomic?
 	db.metrics.IncCounterOne(dbCounterPWrite)
 	if _, err := syscall.Pwrite(db.fd, saveMeta(db), 0); err != nil {
 		return fmt.Errorf("write meta page: %w", err)
@@ -253,7 +254,7 @@ func updateRoot(db *KV) error {
 
 const maxMmapSize = 64 << 15 // 2 MB
 
-// extend the mmap by adding new mappings.
+// extendMmap extend the mmap by adding new mappings.
 func extendMmap(db *KV, size int) error {
 	if size <= db.mmap.total {
 		return nil // enough range
@@ -274,9 +275,10 @@ func extendMmap(db *KV, size int) error {
 	return nil
 }
 
+// updateFile updates the DB file.
 func updateFile(db *KV) error {
 	// 1. Write new nodes.
-	if err := writePages(db); err != nil {
+	if err := updatePages(db); err != nil {
 		return err
 	}
 	// 2. `fsync` to enforce the order between 1 and 3.
@@ -298,7 +300,8 @@ func updateFile(db *KV) error {
 	return nil
 }
 
-func writePages(db *KV) error {
+// updatePages writes all the dirty pages to the file.
+func updatePages(db *KV) error {
 	// extend the mmap if needed
 	size := (db.page.flushed + db.page.nappend) * constants.BtreePageSize
 	if err := extendMmap(db, int(size)); err != nil {
@@ -338,6 +341,7 @@ func (db *KV) Begin(writable bool) *Tx {
 	return NewTx(db, writable)
 }
 
+// Open opens the DB.
 func Open(fp string) (*KV, error) {
 	db := &KV{Path: fp, metrics: newMetrics()}
 	err := db.Open()
@@ -349,7 +353,27 @@ func Open(fp string) (*KV, error) {
 	tx := db.Begin(true)
 	err = tx.Commit()
 	if err != nil {
-		return nil, fmt.Errorf("open: empty commit transaction error: %s", err)
+		return nil, fmt.Errorf("open: empty _commit transaction error: %s", err)
 	}
 	return db, err
+}
+
+// View is a helper to open a read-only transaction.
+func (db *KV) View(fn func(tx *Tx) error) error {
+	tx := db.Begin(false)
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Update is a helper to open a write transaction.
+func (db *KV) Update(fn func(tx *Tx) error) error {
+	tx := db.Begin(true)
+	err := fn(tx)
+	if err == nil {
+		return tx.Commit()
+	}
+	return tx.Rollback()
 }
