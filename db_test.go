@@ -2,6 +2,7 @@ package dbolt
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -197,6 +198,24 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	defer c.dispose()
 
 	assert.Nil(t, c.add([]byte("k"), []byte("v")))
+	t.Run("test error path", func(t *testing.T) {
+		err := c.db.View(func(tx *Tx) error {
+			return errors.New("view error")
+		})
+		assert.NotNil(t, err)
+		err = c.db.Update(func(tx *Tx) error {
+			return errors.New("update error")
+		})
+		assert.NotNil(t, err)
+	})
+
+	t.Run("test recovery", func(t *testing.T) {
+		c.db.failed = true
+		err := c.db.Update(func(tx *Tx) error {
+			return tx.Set([]byte("k"), []byte("v"))
+		})
+		assert.Nil(t, err)
+	})
 	c.verify(t)
 
 	c.db.metrics = newMetrics()

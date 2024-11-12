@@ -375,5 +375,9 @@ func (db *KV) Update(fn func(tx *Tx) error) error {
 	if err == nil {
 		return tx.Commit()
 	}
-	return tx.Rollback()
+	err1 := tx.Rollback()
+	if err1 != nil {
+		return fmt.Errorf("update fn error: %w, rollback error: %s", err, err1)
+	}
+	return err
 }
