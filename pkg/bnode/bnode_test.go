@@ -9,7 +9,7 @@ import (
 )
 
 func TestBnode(t *testing.T) {
-	var originNode = make(Node, constants.BTREE_PAGE_SIZE)
+	var originNode = make(Node, constants.BtreePageSize)
 
 	const keyCount uint16 = 70
 	originNode.SetHeader(NodeTypeLeaf, keyCount)
@@ -28,7 +28,7 @@ func TestBnode(t *testing.T) {
 
 	t.Logf("originNode bytes: %d", originNode.SizeBytes())
 
-	newNode := make(Node, constants.BTREE_PAGE_SIZE)
+	newNode := make(Node, constants.BtreePageSize)
 
 	newNode.SetHeader(NodeTypeLeaf, keyCount)
 
@@ -42,7 +42,7 @@ func TestBnode(t *testing.T) {
 	}
 
 	t.Run("test node append range 2", func(t *testing.T) {
-		tmpNode := make(Node, constants.BTREE_PAGE_SIZE)
+		tmpNode := make(Node, constants.BtreePageSize)
 		tmpNode.SetHeader(NodeTypeLeaf, keyCount)
 		nodeAppendRange2(tmpNode, originNode, 0, 0, keyCount)
 		for i := uint16(0); i < originNode.KeyCounts(); i++ {
@@ -66,7 +66,7 @@ func TestBnode(t *testing.T) {
 	// [0, 1, 2, 3, "inserted", 4,.... n]
 	t.Run("test node insert", func(t *testing.T) {
 		leafInsertTest := func(idx uint16) {
-			tmpNode := make(Node, constants.BTREE_PAGE_SIZE)
+			tmpNode := make(Node, constants.BtreePageSize)
 			tmpNode.SetHeader(NodeTypeLeaf, keyCount+1)
 			testKey := []byte("inserted-key")
 			testVal := []byte("inserted-value")
@@ -94,7 +94,7 @@ func TestBnode(t *testing.T) {
 
 	t.Run("test leaf node update x", func(t *testing.T) {
 		leafUpdateTest := func(idx uint16) {
-			tmpNode := make(Node, constants.BTREE_PAGE_SIZE)
+			tmpNode := make(Node, constants.BtreePageSize)
 			tmpNode.SetHeader(NodeTypeLeaf, keyCount)
 			testKey := []byte("updated-key")
 			testVal := []byte("updated-value")
@@ -118,7 +118,7 @@ func TestBnode(t *testing.T) {
 
 	t.Run("test leaf node delete x", func(t *testing.T) {
 		leafDeleteTest := func(idx uint16) {
-			tmpNode := make(Node, constants.BTREE_PAGE_SIZE)
+			tmpNode := make(Node, constants.BtreePageSize)
 			LeafDelete(tmpNode, originNode, idx)
 			assert.Equal(t, keyCount-1, tmpNode.KeyCounts())
 			for i := uint16(0); i < tmpNode.KeyCounts(); i++ {
@@ -151,17 +151,17 @@ func TestBnode(t *testing.T) {
 		}
 	})
 
-	t.Run("test node split 2 / split 3", func(t *testing.T) {
-		bigNode := make(Node, constants.BTREE_PAGE_SIZE*2)
+	t.Run("test node split2 and split3", func(t *testing.T) {
+		bigNode := make(Node, constants.BtreePageSize*2)
 		bigNode.SetHeader(NodeTypeLeaf, 167)
 		for i := uint16(0); i < bigNode.KeyCounts(); i++ {
 			NodeAppendKVOrPtr(bigNode, i, 0, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 		}
 		// must bigger than one page
-		assert.Greater(t, bigNode.SizeBytes(), uint16(constants.BTREE_PAGE_SIZE))
+		assert.Greater(t, bigNode.SizeBytes(), uint16(constants.BtreePageSize))
 
-		leftNode := make(Node, constants.BTREE_PAGE_SIZE)
-		rightNode := make(Node, constants.BTREE_PAGE_SIZE)
+		leftNode := make(Node, constants.BtreePageSize)
+		rightNode := make(Node, constants.BtreePageSize)
 		nodeSplit2(leftNode, rightNode, bigNode)
 
 		nextKey := uint16(0)
@@ -182,22 +182,21 @@ func TestBnode(t *testing.T) {
 			assert.Equal(t, rightNode.GetKey(i), getNextKeys())
 		}
 
-		n, nodes := NodeSplit3(bigNode)
-		assert.Equal(t, n, uint16(2))
-		assert.Nil(t, nodes[2])
+		nodes := NodeSplit3(bigNode)
+		assert.Len(t, nodes, 2)
 
 		assert.Equal(t, leftNode, nodes[0])
 		assert.Equal(t, rightNode, nodes[1])
 
-		superBigNode := make(Node, constants.BTREE_PAGE_SIZE*3)
+		superBigNode := Node(utils.GetPage(constants.BtreePageSize * 3))
 		superBigNode.SetHeader(NodeTypeLeaf, 256)
 
 		for i := uint16(0); i < superBigNode.KeyCounts(); i++ {
 			NodeAppendKVOrPtr(superBigNode, i, 0, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 		}
 
-		n, nodes = NodeSplit3(superBigNode)
-		assert.Equal(t, n, uint16(3))
+		nodes = NodeSplit3(superBigNode)
+		assert.Len(t, nodes, 3)
 		t.Logf("suprtBigNode has %d keys, after spliting there are 3 nodes with nkeys: %v",
 			superBigNode.KeyCounts(), []uint16{nodes[0].KeyCounts(), nodes[1].KeyCounts(), nodes[2].KeyCounts()})
 		// reset the next key
@@ -211,20 +210,18 @@ func TestBnode(t *testing.T) {
 	})
 
 	t.Run("test node split 3 with small node", func(t *testing.T) {
-		tmpNode := make(Node, constants.BTREE_PAGE_SIZE)
+		tmpNode := make(Node, constants.BtreePageSize)
 		tmpNode.SetHeader(NodeTypeLeaf, keyCount)
 		NodeAppendKVOrPtrRange(tmpNode, originNode, 0, 0, keyCount)
 
-		n, nodes := NodeSplit3(tmpNode)
-		assert.Equal(t, uint16(1), n)
+		nodes := NodeSplit3(tmpNode)
+		assert.Len(t, nodes, 1)
 		assert.NotNil(t, nodes[0])
-		assert.Nil(t, nodes[1])
-		assert.Nil(t, nodes[2])
 	})
 }
 
 func BenchmarkNode(b *testing.B) {
-	var bnode = make(Node, constants.BTREE_PAGE_SIZE)
+	var bnode = make(Node, constants.BtreePageSize)
 	const keyCount uint16 = 70
 	bnode.SetHeader(NodeTypeLeaf, keyCount)
 	for i := uint16(0); i < keyCount; i++ {
@@ -233,7 +230,7 @@ func BenchmarkNode(b *testing.B) {
 
 	b.Run("benchmark NodeAppendKVOrPtrRange", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			newNode := make(Node, constants.BTREE_PAGE_SIZE)
+			newNode := make(Node, constants.BtreePageSize)
 			newNode.SetHeader(NodeTypeLeaf, keyCount)
 			NodeAppendKVOrPtrRange(newNode, bnode, 0, 0, keyCount)
 		}
@@ -241,7 +238,7 @@ func BenchmarkNode(b *testing.B) {
 
 	b.Run("benchmark nodeAppendRange2", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			newNode := make(Node, constants.BTREE_PAGE_SIZE)
+			newNode := make(Node, constants.BtreePageSize)
 			newNode.SetHeader(NodeTypeLeaf, keyCount)
 			nodeAppendRange2(newNode, bnode, 0, 0, keyCount)
 		}
@@ -251,7 +248,7 @@ func BenchmarkNode(b *testing.B) {
 		testKey := []byte("inserted-key")
 		testVal := []byte("inserted-value")
 		for i := 0; i < b.N; i++ {
-			newNode := make(Node, constants.BTREE_PAGE_SIZE)
+			newNode := make(Node, constants.BtreePageSize)
 			newNode.SetHeader(NodeTypeLeaf, keyCount+1)
 			LeafInsert(newNode, bnode, uint16(i)%keyCount, testKey, testVal)
 		}
@@ -261,7 +258,7 @@ func BenchmarkNode(b *testing.B) {
 		testKey := []byte("updated-key")
 		testVal := []byte("updated-value")
 		for i := 0; i < b.N; i++ {
-			newNode := make(Node, constants.BTREE_PAGE_SIZE)
+			newNode := make(Node, constants.BtreePageSize)
 			newNode.SetHeader(NodeTypeLeaf, keyCount)
 			LeafUpdate(newNode, bnode, uint16(i)%keyCount, testKey, testVal)
 		}

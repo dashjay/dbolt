@@ -24,11 +24,13 @@ const (
 	// dbCounterFsync indicate how many times db do fsync
 	dbCounterFsync string = "db-counter-fsync"
 	// dbCounterPWrite indicate how many times db do pwrite
+	//nolint:gosec // metrics name
 	dbCounterPWrite string = "db-counter-pwrite"
 	// dbCounterFreelistPopHead indicate how many times db push to freelist
 	dbCounterFreelistPushTail string = "db-couter-freelist-push-tail"
 )
 
+//nolint:gochecknoglobals // metrics names
 var allMetrics = []string{
 	dbCounterPageReadCache,
 	dbCounterPageReadFromFile,
@@ -47,7 +49,7 @@ type metrics struct {
 
 func newMetrics() *metrics {
 	m := &metrics{
-		Counters: make(map[string]*Counter, 20),
+		Counters: make(map[string]*Counter),
 	}
 	for _, metric := range allMetrics {
 		m._initCounter(metric)

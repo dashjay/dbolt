@@ -1,11 +1,12 @@
 package freelist
 
 import (
-	"slices"
+	"sort"
 	"testing"
 
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/utils"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,8 +20,8 @@ type L struct {
 
 func newL() *L {
 	pages := map[uint64][]byte{}
-	pages[1] = utils.GetPage(constants.BTREE_PAGE_SIZE) // initial node
-	nextPageID := uint64(1000)                          // [1000, 10000)
+	pages[1] = utils.GetPage(constants.BtreePageSize) // initial node
+	nextPageID := uint64(1000)                        // [1000, 10000)
 
 	getNode := func(ptr uint64) []byte {
 		utils.Assertf(pages[ptr] != nil, "pages[%d] should not be nil", ptr)
@@ -47,7 +48,7 @@ func newL() *L {
 
 func (l *L) push(ptr uint64) {
 	utils.Assertf(l.pages[ptr] == nil, "push on non-empty page %d", ptr)
-	l.pages[ptr] = utils.GetPage(constants.BTREE_PAGE_SIZE)
+	l.pages[ptr] = utils.GetPage(constants.BtreePageSize)
 	l.free.PushTail(ptr)
 	l.added = append(l.added, ptr)
 }
@@ -60,6 +61,23 @@ func (l *L) pop() uint64 {
 	return ptr
 }
 
+type uint64Slice []uint64
+
+func (a uint64Slice) Len() int           { return len(a) }
+func (a uint64Slice) Less(i, j int) bool { return a[i] < a[j] }
+func (a uint64Slice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+func equal[T comparable](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
 func (l *L) verify() {
 	l.free.assertCheckFreelist()
 
@@ -70,7 +88,7 @@ func (l *L) verify() {
 		if 1000 <= ptr && ptr < 10000 {
 			appended = append(appended, ptr)
 		} else if ptr != 1 {
-			utils.Assert(slices.Contains(l.added, ptr), "")
+			utils.Assert(lo.Contains(l.added, ptr), "")
 		}
 		ptrs = append(ptrs, ptr)
 	}
@@ -79,16 +97,16 @@ func (l *L) verify() {
 
 	// any pointer is either in the free list, a list node, or removed.
 	utils.Assert(len(l.pages) == len(list)+len(nodes)+len(l.removed), "")
-	combined := slices.Concat(list, nodes, l.removed)
-	slices.Sort(combined)
-	slices.Sort(ptrs)
-	utils.Assert(slices.Equal(combined, ptrs), "")
+	combined := append(list, append(nodes, l.removed...)...)
+	sort.Sort(uint64Slice(combined))
+	sort.Sort(uint64Slice(ptrs))
+	utils.Assert(equal(combined, ptrs), "")
 
 	// any pointer is either the initial node, an allocated node, or added
 	utils.Assert(len(l.pages) == 1+len(appended)+len(l.added), "")
-	combined = slices.Concat([]uint64{1}, appended, l.added)
-	slices.Sort(combined)
-	utils.Assert(slices.Equal(combined, ptrs), "")
+	combined = append([]uint64{1}, append(appended, l.added...)...)
+	sort.Sort(uint64Slice(combined))
+	utils.Assert(equal(combined, ptrs), "")
 }
 
 func TestGetFromEmptyList(t *testing.T) {
@@ -162,7 +180,7 @@ func TestFreeListRandom(t *testing.T) {
 			} else {
 				x := l.pop()
 				if x != 0 {
-					assert.Len(t, l.free.getNode(x), constants.BTREE_PAGE_SIZE)
+					assert.Len(t, l.free.getNode(x), constants.BtreePageSize)
 				}
 			}
 		}

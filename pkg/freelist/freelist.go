@@ -1,37 +1,40 @@
 package freelist
 
 import (
-	"encoding/binary"
+	"unsafe"
 
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/utils"
 )
+
+const ptrSize = int(unsafe.Sizeof(uint64(0)))
 
 // LNode node format:
 // | next | pointers | unused |
 // |  8B  |   n*8B   |   ...  |
 type LNode []byte
 
-const FREE_LIST_HEADER = 8
-const FREE_LIST_CAP = (constants.BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 8
+const HeaderSize = 8
+const ListCapacity = (constants.BtreePageSize - HeaderSize) / 8
 
 // getters & setters
 func (node LNode) getNext() uint64 {
-	return binary.LittleEndian.Uint64(node[0:8])
+	return constants.BinaryAlgorithm.Uint64(node[:HeaderSize])
 }
+
 func (node LNode) setNext(next uint64) {
-	binary.LittleEndian.PutUint64(node[0:8], next)
+	constants.BinaryAlgorithm.PutUint64(node[:HeaderSize], next)
 }
+
 func (node LNode) getPtr(idx int) uint64 {
-	offset := FREE_LIST_HEADER + 8*idx
-	return binary.LittleEndian.Uint64(node[offset:])
-
+	offset := HeaderSize + ptrSize*idx
+	return constants.BinaryAlgorithm.Uint64(node[offset:])
 }
-func (node LNode) setPtr(idx int, ptr uint64) {
-	utils.Assert(idx < FREE_LIST_CAP, "setNode ptr overflow free list cap")
-	offset := FREE_LIST_HEADER + 8*idx
-	binary.LittleEndian.PutUint64(node[offset:], ptr)
 
+func (node LNode) setPtr(idx int, ptr uint64) {
+	utils.Assert(idx < ListCapacity, "setNode ptr overflow free list cap")
+	offset := HeaderSize + ptrSize*idx
+	constants.BinaryAlgorithm.PutUint64(node[offset:], ptr)
 }
 
 type List struct {
@@ -92,7 +95,7 @@ func (fl *List) GetMeta() (headPage, headSeq, tailPage, tailSeq uint64) {
 
 // seq2idx every node's first 8 bytes is header, seq can be translated to the idx of free node in this page
 func seq2idx(seq uint64) int {
-	return int(seq % FREE_LIST_CAP)
+	return int(seq % ListCapacity)
 }
 
 func (fl *List) assertCheckFreelist() {
@@ -138,7 +141,7 @@ func (fl *List) PushTail(ptr uint64) {
 		next, head := flPop(fl) // may remove the head node
 		if next == 0 {
 			// or allocate a new node by appending
-			next = fl.newNode(utils.GetPage(constants.BTREE_PAGE_SIZE))
+			next = fl.newNode(utils.GetPage(constants.BtreePageSize))
 		}
 		// link to the new tail node
 		LNode(fl.setNode(fl.tailPage)).setNext(next)

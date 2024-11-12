@@ -17,16 +17,16 @@ import (
 func TestBtree(t *testing.T) {
 	t.Run("test node merge", func(t *testing.T) {
 		const keyCount uint16 = 20
-		leftNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		leftNode := make(bnode.Node, constants.BtreePageSize)
 		leftNode.SetHeader(bnode.NodeTypeLeaf, uint16(keyCount))
-		rightNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		rightNode := make(bnode.Node, constants.BtreePageSize)
 		rightNode.SetHeader(bnode.NodeTypeLeaf, uint16(keyCount))
 
 		for i := uint16(0); i < keyCount; i++ {
 			bnode.NodeAppendKVOrPtr(leftNode, i, 1, utils.GenTestKey(uint64(i)), utils.GenTestValue(uint64(i)))
 			bnode.NodeAppendKVOrPtr(rightNode, i, 1, utils.GenTestKey(uint64(i+keyCount)), utils.GenTestValue(uint64(i+keyCount)))
 		}
-		newNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		newNode := make(bnode.Node, constants.BtreePageSize)
 		nodeMerge(newNode, leftNode, rightNode)
 
 		assert.Equal(t, 2*keyCount, newNode.KeyCounts())
@@ -106,9 +106,9 @@ func TestBtree(t *testing.T) {
 func BenchmarkBtree(b *testing.B) {
 	const keyCount uint16 = 30
 	b.Run("benchmark node merge", func(b *testing.B) {
-		leftNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		leftNode := make(bnode.Node, constants.BtreePageSize)
 		leftNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
-		rightNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		rightNode := make(bnode.Node, constants.BtreePageSize)
 		rightNode.SetHeader(bnode.NodeTypeLeaf, keyCount)
 
 		for i := uint16(0); i < keyCount; i++ {
@@ -117,7 +117,7 @@ func BenchmarkBtree(b *testing.B) {
 		}
 
 		b.ResetTimer()
-		newNode := make(bnode.Node, constants.BTREE_PAGE_SIZE)
+		newNode := make(bnode.Node, constants.BtreePageSize)
 		for i := 0; i < b.N; i++ {
 			nodeMerge(newNode, leftNode, rightNode)
 		}
@@ -137,7 +137,7 @@ func BenchmarkBtree(b *testing.B) {
 		ctree := newC()
 		bar := progressbar.Default(OpCount, "adding data")
 		for i := uint64(0); i < OpCount; i++ {
-			bar.Add(1)
+			_ = bar.Add(1)
 			ctree.add(genTestKey(i), genTestValue(i))
 		}
 		return ctree
@@ -151,7 +151,7 @@ func BenchmarkBtree(b *testing.B) {
 		b.ResetTimer()
 		bar := progressbar.Default(OpCount, "getting data")
 		for i := uint64(0); i < OpCount; i++ {
-			bar.Add(1)
+			_ = bar.Add(1)
 			_, _ = ctree.get(genTestKey(i))
 		}
 	})
@@ -159,7 +159,7 @@ func BenchmarkBtree(b *testing.B) {
 		bar := progressbar.Default(OpCount, "deleting data")
 		b.ResetTimer()
 		for i := uint64(0); i < OpCount; i++ {
-			bar.Add(1)
+			_ = bar.Add(1)
 			ctree.del(genTestKey(i))
 		}
 	})
@@ -179,7 +179,7 @@ func newC() *C {
 		return node
 	}
 	newNode := func(node []byte) uint64 {
-		utils.Assert(bnode.Node(node).SizeBytes() <= constants.BTREE_PAGE_SIZE, "assertion failed: new node over size")
+		utils.Assert(bnode.Node(node).SizeBytes() <= constants.BtreePageSize, "assertion failed: new node over size")
 		ptr := uint64(uintptr(unsafe.Pointer(&node[0])))
 		utils.Assert(pages[ptr] == nil, "assertion failed: page should not exists")
 		pages[ptr] = node

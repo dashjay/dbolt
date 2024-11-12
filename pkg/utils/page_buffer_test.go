@@ -7,6 +7,6 @@ import (
 )
 
 func TestPageBuffer(t *testing.T) {
-	page := GetPage(constants.BTREE_PAGE_SIZE)
+	page := GetPage(constants.BtreePageSize)
 	PutPage(page)
 }

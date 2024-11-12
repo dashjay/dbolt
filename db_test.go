@@ -195,14 +195,14 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	c := newD()
 	defer c.dispose()
 
-	c.add([]byte("k"), []byte("v"))
+	assert.Nil(t, c.add([]byte("k"), []byte("v")))
 	c.verify(t)
 
 	c.db.metrics = newMetrics()
 	for i := 0; i < 25000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(-i))))
-		c.add(key, val)
+		assert.Nil(t, c.add(key, val))
 		if i < 2000 {
 			c.verify(t)
 		}
@@ -237,7 +237,7 @@ func funcTestKVBasic(t *testing.T, reopen bool) {
 	for i := 0; i < 2000; i++ {
 		key := []byte(fmt.Sprintf("key%d", utils.Murmur32(uint32(i))))
 		val := []byte(fmt.Sprintf("vvv%d", utils.Murmur32(uint32(+i))))
-		c.add(key, val)
+		assert.Nil(t, c.add(key, val))
 		c.verify(t)
 	}
 
@@ -325,34 +325,36 @@ func TestKVRandLength(t *testing.T) {
 	defer c.dispose()
 
 	for i := 0; i < 2000; i++ {
-		klen := utils.Murmur32(uint32(2*i+0)) % constants.BTREE_MAX_KEY_SIZE
-		vlen := utils.Murmur32(uint32(2*i+1)) % constants.BTREE_MAX_VAL_SIZE
+		klen := utils.Murmur32(uint32(2*i+0)) % constants.BtreeMaxKeySize
+		vlen := utils.Murmur32(uint32(2*i+1)) % constants.BtreeMaxValSize
 		if klen == 0 {
 			continue
 		}
 
 		key := make([]byte, klen)
-		rand.Read(key)
+		_, err := rand.Read(key)
+		assert.Nil(t, err)
 		val := make([]byte, vlen)
-		rand.Read(val)
-		c.add(key, val)
+		_, err = rand.Read(val)
+		assert.Nil(t, err)
+		assert.Nil(t, c.add(key, val))
 		c.verify(t)
 	}
 }
 
 func TestKVIncLength(t *testing.T) {
-	for l := 1; l < constants.BTREE_MAX_KEY_SIZE+constants.BTREE_MAX_VAL_SIZE; l += 64 {
+	for l := 1; l < constants.BtreeMaxKeySize+constants.BtreeMaxValSize; l += 64 {
 		c := newD()
 
 		klen := l
-		if klen > constants.BTREE_MAX_KEY_SIZE {
-			klen = constants.BTREE_MAX_KEY_SIZE
+		if klen > constants.BtreeMaxKeySize {
+			klen = constants.BtreeMaxKeySize
 		}
 		vlen := l - klen
 		key := make([]byte, klen)
 		val := make([]byte, vlen)
 
-		factor := constants.BTREE_PAGE_SIZE / l
+		factor := constants.BtreePageSize / l
 		size := factor * factor * 2
 		if size > 4000 {
 			size = 4000
@@ -361,8 +363,9 @@ func TestKVIncLength(t *testing.T) {
 			size = 10
 		}
 		for i := 0; i < size; i++ {
-			rand.Read(key)
-			c.add(key, val)
+			_, err := rand.Read(key)
+			assert.Nil(t, err)
+			assert.Nil(t, c.add(key, val))
 		}
 		c.verify(t)
 
