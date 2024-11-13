@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/dashjay/dbolt"
 	"github.com/pkg/profile"
-	"github.com/schollz/progressbar/v2"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -43,6 +44,7 @@ func NewDBCommand() *cobra.Command {
 		NewCreateDBCommand(),
 		NewAppendDBCommand(),
 		NewDeleteCommand(),
+		NewGetDBCommand(),
 	)
 	cmd.PersistentFlags().Int64Var(&batchCount, "batch-count", defaultBatchCount, "count for every transaction")
 	cmd.PersistentFlags().StringVar(&dbPath, "db-path", "", "path to database")
@@ -57,7 +59,7 @@ func NewAppendDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("appending to db"))
+		bar := progressbar.Default(*entryCount, "appending to db")
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -102,7 +104,7 @@ func NewDeleteCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("deleting db"))
+		bar := progressbar.Default(*entryCount, "deleting db")
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -147,7 +149,7 @@ func NewCreateDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.NewOptions64(*entryCount, progressbar.OptionSetDescription("creating db"))
+		bar := progressbar.Default(*entryCount, "creating db")
 		_, err := os.Stat(dbPath)
 		if err == nil {
 			return fmt.Errorf("create db error, db %s already exists", dbPath)
@@ -194,15 +196,18 @@ func NewScanDBCommand() *cobra.Command {
 	startKey := cmd.Flags().String("start-key", "", "start key")
 	endKey := cmd.Flags().String("end-key", "", "end key")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		bar := progressbar.Default(1, "scanning keys")
+		bar.StartWithoutRender()
 		i := 0
 		handleOne := func(key, value []byte) {
 			i++
-			fmt.Printf("key: %s, value: %s, %d scanned\n", key, value, i)
+			bar.ChangeMax(i + 1)
+			bar.Add(1)
+			bar.Describe(fmt.Sprintf("scanning key: %s, value: %s, %d scanned", key, value, i))
 		}
 		start := time.Now()
-
 		defer func() {
-			fmt.Printf("%d key scanned in %.2f sec, %.2f per sec", i, time.Since(start).Seconds(), float64(i)/time.Since(start).Seconds())
+			fmt.Printf("\n%d key scanned in %.2f sec, %.2f per sec\n", i, time.Since(start).Seconds(), float64(i)/time.Since(start).Seconds())
 		}()
 		kv, err := dbolt.Open(dbPath)
 		if err != nil {
@@ -228,6 +233,58 @@ func NewScanDBCommand() *cobra.Command {
 				break
 			}
 		}
+		return nil
+	}
+	return cmd
+}
+
+func NewGetDBCommand() *cobra.Command {
+	cmd := new(cobra.Command)
+	cmd.Use = "get"
+	keyTpl := cmd.Flags().String("key-tpl", "test-key-%010d", "template of key")
+	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
+	concurrency := cmd.Flags().Int64("concurrency", 1, "number of concurrent goroutines")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		kv, err := dbolt.Open(dbPath)
+		if err != nil {
+			return err
+		}
+		defer kv.Close()
+		ch := make(chan struct{}, *concurrency)
+		var wg sync.WaitGroup
+		bar := progressbar.Default(*entryCount, "getting keys")
+		bar.StartWithoutRender()
+
+		starts := make([]int, 0, *concurrency)
+		end := make([]int, 0, *concurrency)
+		for i := int64(0); i < *concurrency; i++ {
+			share := *entryCount / *concurrency
+			starts = append(starts, int(i*share))
+			end = append(end, int((i+1)*share))
+		}
+		for i := int64(0); i < *concurrency; i++ {
+			ch <- struct{}{}
+			wg.Add(1)
+			go func(idx int) {
+				defer func() {
+					<-ch
+					wg.Done()
+				}()
+				for j := starts[idx]; j < end[idx]; j++ {
+					err := kv.View(func(tx *dbolt.Tx) error {
+						key := fmt.Sprintf(*keyTpl, j)
+						val, _ := tx.Get([]byte(key))
+						bar.Add(1)
+						bar.Describe(fmt.Sprintf("getting %s/%s", key, val))
+						return nil
+					})
+					if err != nil {
+						panic(err)
+					}
+				}
+			}(int(i))
+		}
+		wg.Wait()
 		return nil
 	}
 	return cmd
