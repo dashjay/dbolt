@@ -14,7 +14,6 @@ import (
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/freelist"
 	"github.com/dashjay/dbolt/pkg/utils"
-	"github.com/schollz/progressbar/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -440,42 +439,33 @@ func BenchmarkOnDisk(b *testing.B) {
 		d.db.metrics.ReportMetrics()
 		d.db.metrics = newMetrics()
 	}
-	bar := progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("adding keys"))
 	for i := uint64(0); i < N; i++ {
-		bar.Add(1)
 		d.add(utils.GenTestKey(i), utils.GenTestValue(i))
 		if i%reportInterval == 0 {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after adding %d keys", reportInterval))
 		}
 	}
-	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("getting keys"))
+
 	for i := uint64(0); i < N; i++ {
-		bar.Add(1)
 		_, _ = d.get(utils.GenTestKey(i))
 		d.get(utils.GenTestKey(i))
 		if i%reportInterval == 0 {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d keys", reportInterval))
 		}
 	}
-	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("getting non-exists keys"))
 	for i := uint64(0); i < N; i++ {
-		bar.Add(1)
 		_, _ = d.get(append(utils.GenTestKey(i), 'n'))
 		if i%reportInterval == 0 {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after getting %d non-exists keys", reportInterval))
 		}
 	}
-	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("deleting key not exists"))
 	for i := uint64(0); i < N; i++ {
-		bar.Add(1)
 		_ = d.del(append(utils.GenTestKey(i), 'n'))
 		if i%reportInterval == 0 {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d non-exists keys", reportInterval))
 		}
 	}
-	bar = progressbar.NewOptions64(int64(N), progressbar.OptionSetDescription("deleting keys"))
 	for i := uint64(0); i < N; i++ {
-		bar.Add(1)
 		_ = d.del(utils.GenTestKey(i))
 		if i%reportInterval == 0 {
 			reportAndResetMetrics(fmt.Sprintf("report metrics after deleting %d keys", reportInterval))
