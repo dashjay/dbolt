@@ -28,7 +28,7 @@ const (
 )
 
 func main() {
-	p := profile.Start(profile.CPUProfile,
+	p := profile.Start(profile.MemProfile,
 		profile.ProfilePath("db-pprof"),
 		profile.NoShutdownHook,
 	)
@@ -66,6 +66,7 @@ func NewAppendDBCommand() *cobra.Command {
 		p := pb.New64(*entryCount)
 		p.Start()
 		p.SetWidth(defaultWidth)
+		p.SetTemplateString(`{{"append key/value => "}} {{ string . "key" }} {{ "/" }} {{ string . "value" }} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`)
 		defer p.Finish()
 
 		_, err := os.Stat(dbPath)
@@ -80,7 +81,8 @@ func NewAppendDBCommand() *cobra.Command {
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
-			p.SetTemplateString(fmt.Sprintf(`{{"append key/value pair: %s/%s"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key, value))
+			p.Set("key", string(key))
+			p.Set("value", string(value))
 			_ = p.Add(1)
 			err = tx.Set(key, value)
 			if err != nil {
@@ -115,6 +117,7 @@ func NewDeleteCommand() *cobra.Command {
 		p := pb.New64(*entryCount)
 		p.Start()
 		p.SetWidth(defaultWidth)
+		p.SetTemplateString(`{{"delete key: "}} {{ string . "key" }} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`)
 		defer p.Finish()
 		_, err := os.Stat(dbPath)
 		if err != nil {
@@ -127,8 +130,8 @@ func NewDeleteCommand() *cobra.Command {
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
+			p.Set("key", string(key))
 			_ = p.Add(1)
-			p.SetTemplateString(fmt.Sprintf(`{{"delete key: %s"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key))
 			_, err = tx.Del(key)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -163,6 +166,8 @@ func NewCreateDBCommand() *cobra.Command {
 		p := pb.New64(*entryCount)
 		p.Start()
 		p.SetWidth(defaultWidth)
+		p.SetTemplateString(`{{"insert key/value pair: "}} {{ string . "key" }} {{ "/" }} {{ string . "value" }} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`)
+
 		defer p.Finish()
 		_, err := os.Stat(dbPath)
 		if err == nil {
@@ -179,7 +184,8 @@ func NewCreateDBCommand() *cobra.Command {
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
-			p.SetTemplateString(fmt.Sprintf(`{{"insert key/value pair: %s/%s"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key, value))
+			p.Set("key", string(key))
+			p.Set("value", string(value))
 			_ = p.Add(1)
 			err = tx.Set(key, value)
 			if err != nil {
@@ -213,13 +219,15 @@ func NewScanDBCommand() *cobra.Command {
 		p := pb.New64(1)
 		p.Start()
 		p.SetWidth(defaultWidth)
+		p.SetTemplateString(`{{"scanning key/value: "}} {{ string . "key" }} {{ "/" }} {{ string . "value" }} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`)
 		defer p.Finish()
 		i := 0
 		handleOne := func(key, value []byte) {
 			i++
+			p.Set("key", string(key))
+			p.Set("value", string(value))
 			p.AddTotal(1)
 			p.Add(1)
-			p.SetTemplateString(fmt.Sprintf(`{{"scanning key: %s, value: %s, %d scanned"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key, value, i))
 		}
 		start := time.Now()
 		defer func() {
