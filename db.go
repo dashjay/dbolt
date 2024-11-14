@@ -361,7 +361,7 @@ func Open(fp string) (*KV, error) {
 // View is a helper to open a read-only transaction.
 func (db *KV) View(fn func(tx *Tx) error) error {
 	tx := db.Begin(false)
-	defer tx.Rollback()
+	defer tx._unlock()
 	if err := fn(tx); err != nil {
 		return err
 	}

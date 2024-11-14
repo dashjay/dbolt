@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/cheggaaa/pb/v3"
-	"github.com/dashjay/dbolt"
 	"github.com/pkg/profile"
 	"github.com/spf13/cobra"
+
+	"github.com/dashjay/dbolt"
 )
 
 var (
@@ -21,7 +22,10 @@ var (
 	batchCount int64
 )
 
-const defaultBatchCount = 5
+const (
+	defaultBatchCount = 5
+	defaultWidth      = 120
+)
 
 func main() {
 	p := profile.Start(profile.CPUProfile,
@@ -61,6 +65,8 @@ func NewAppendDBCommand() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		p := pb.New64(*entryCount)
 		p.Start()
+		p.SetWidth(defaultWidth)
+		defer p.Finish()
 
 		_, err := os.Stat(dbPath)
 		if err != nil {
@@ -108,6 +114,8 @@ func NewDeleteCommand() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		p := pb.New64(*entryCount)
 		p.Start()
+		p.SetWidth(defaultWidth)
+		defer p.Finish()
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -154,6 +162,8 @@ func NewCreateDBCommand() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		p := pb.New64(*entryCount)
 		p.Start()
+		p.SetWidth(defaultWidth)
+		defer p.Finish()
 		_, err := os.Stat(dbPath)
 		if err == nil {
 			return fmt.Errorf("create db error, db %s already exists", dbPath)
@@ -202,6 +212,8 @@ func NewScanDBCommand() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		p := pb.New64(1)
 		p.Start()
+		p.SetWidth(defaultWidth)
+		defer p.Finish()
 		i := 0
 		handleOne := func(key, value []byte) {
 			i++
@@ -258,9 +270,9 @@ func NewGetDBCommand() *cobra.Command {
 		var wg sync.WaitGroup
 		p := pb.New64(*entryCount)
 		p.Start()
-		p.SetTemplateString(fmt.Sprintf(`{{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`))
-		p.SetWidth(120)
-
+		p.SetTemplateString(`{{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`)
+		p.SetWidth(defaultWidth)
+		defer p.Finish()
 		starts := make([]int, 0, *concurrency)
 		end := make([]int, 0, *concurrency)
 		for i := int64(0); i < *concurrency; i++ {
@@ -278,6 +290,7 @@ func NewGetDBCommand() *cobra.Command {
 				}()
 				for j := starts[idx]; j < end[idx]; j++ {
 					err := kv.View(func(tx *dbolt.Tx) error {
+						p.Add(1)
 						key := fmt.Sprintf(*keyTpl, j)
 						_, _ = tx.Get([]byte(key))
 						return nil
