@@ -10,7 +10,6 @@ import (
 	"github.com/dashjay/dbolt/pkg/bnode"
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/utils"
-	"github.com/schollz/progressbar/v3"
 	"github.com/stretchr/testify/assert"
 )
 

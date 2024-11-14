@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cheggaaa/pb/v3"
 	"github.com/dashjay/dbolt"
 	"github.com/pkg/profile"
-	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -59,7 +59,9 @@ func NewAppendDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "appending to db")
+		p := pb.New64(*entryCount)
+		p.Start()
+
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -70,10 +72,10 @@ func NewAppendDBCommand() *cobra.Command {
 		}
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
-			_ = bar.Add(1)
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
-			bar.Describe(fmt.Sprintf("append key/value pair: %s/%s", key, value))
+			p.SetTemplateString(fmt.Sprintf(`{{"append key/value pair: %s/%s"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key, value))
+			_ = p.Add(1)
 			err = tx.Set(key, value)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -104,7 +106,8 @@ func NewDeleteCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "deleting db")
+		p := pb.New64(*entryCount)
+		p.Start()
 		_, err := os.Stat(dbPath)
 		if err != nil {
 			return fmt.Errorf("open db error: %s", err)
@@ -116,8 +119,8 @@ func NewDeleteCommand() *cobra.Command {
 		tx := kv.Begin(true)
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
-			_ = bar.Add(1)
-			bar.Describe(fmt.Sprintf("delete key: %s", key))
+			_ = p.Add(1)
+			p.SetTemplateString(fmt.Sprintf(`{{"delete key: %s"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key))
 			_, err = tx.Del(key)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -149,7 +152,8 @@ func NewCreateDBCommand() *cobra.Command {
 	entryCount := cmd.Flags().Int64("entry-count", math.MaxUint16, "number of entries to create")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(*entryCount, "creating db")
+		p := pb.New64(*entryCount)
+		p.Start()
 		_, err := os.Stat(dbPath)
 		if err == nil {
 			return fmt.Errorf("create db error, db %s already exists", dbPath)
@@ -165,8 +169,8 @@ func NewCreateDBCommand() *cobra.Command {
 		for i := int64(0); i < *entryCount; i++ {
 			key := []byte(fmt.Sprintf(*keyTpl, i))
 			value := []byte(fmt.Sprintf(*valueTpl, i))
-			bar.Describe(fmt.Sprintf("insert key/value pair: %s/%s", key, value))
-			_ = bar.Add(1)
+			p.SetTemplateString(fmt.Sprintf(`{{"insert key/value pair: %s/%s"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key, value))
+			_ = p.Add(1)
 			err = tx.Set(key, value)
 			if err != nil {
 				return fmt.Errorf("write key/value pair error: %s", err)
@@ -196,14 +200,14 @@ func NewScanDBCommand() *cobra.Command {
 	startKey := cmd.Flags().String("start-key", "", "start key")
 	endKey := cmd.Flags().String("end-key", "", "end key")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		bar := progressbar.Default(1, "scanning keys")
-		bar.StartWithoutRender()
+		p := pb.New64(1)
+		p.Start()
 		i := 0
 		handleOne := func(key, value []byte) {
 			i++
-			bar.ChangeMax(i + 1)
-			bar.Add(1)
-			bar.Describe(fmt.Sprintf("scanning key: %s, value: %s, %d scanned", key, value, i))
+			p.AddTotal(1)
+			p.Add(1)
+			p.SetTemplateString(fmt.Sprintf(`{{"scanning key: %s, value: %s, %d scanned"}} {{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`, key, value, i))
 		}
 		start := time.Now()
 		defer func() {
@@ -252,8 +256,10 @@ func NewGetDBCommand() *cobra.Command {
 		defer kv.Close()
 		ch := make(chan struct{}, *concurrency)
 		var wg sync.WaitGroup
-		bar := progressbar.Default(*entryCount, "getting keys")
-		bar.StartWithoutRender()
+		p := pb.New64(*entryCount)
+		p.Start()
+		p.SetTemplateString(fmt.Sprintf(`{{ bar . "<" "-" (cycle . "↖" "↗" "↘" "↙" ) "." ">"}} {{ speed . }}`))
+		p.SetWidth(120)
 
 		starts := make([]int, 0, *concurrency)
 		end := make([]int, 0, *concurrency)
@@ -273,9 +279,7 @@ func NewGetDBCommand() *cobra.Command {
 				for j := starts[idx]; j < end[idx]; j++ {
 					err := kv.View(func(tx *dbolt.Tx) error {
 						key := fmt.Sprintf(*keyTpl, j)
-						val, _ := tx.Get([]byte(key))
-						bar.Add(1)
-						bar.Describe(fmt.Sprintf("getting %s/%s", key, val))
+						_, _ = tx.Get([]byte(key))
 						return nil
 					})
 					if err != nil {
