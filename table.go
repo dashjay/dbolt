@@ -1,6 +1,7 @@
 package dbolt
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,9 +57,9 @@ func (v *Value) EncodedSize() int {
 		return 0
 	}
 	if v.Type == TypeInt64 {
-		return constants.Uint32Size + constants.Uint64Size + constants.Uint64Size
+		return constants.Uint64Size
 	} else if v.Type == TypeBytes {
-		return constants.Uint32Size + constants.Uint64Size + len(v.Str)
+		return utils.EscapeStringSize(v.Str)
 	}
 	utils.Assertf(false, "unknown value type %v", v.Type)
 	return 0
@@ -69,37 +70,32 @@ func encodeValue(buf []byte, v *Value) int {
 
 	encodedSize := v.EncodedSize()
 	utils.Assertf(cap(buf) >= encodedSize, "capacity(%d) of buf is not enough to put value(encodedSize=%d) in", cap(buf), encodedSize)
-	constants.BinaryAlgorithm.PutUint32(buf[:4], v.Type)
-	// 4 for types
-	// 8 for val size
-	// another x for val
-	n := 12
+	n := 0
 	switch v.Type {
 	case TypeBytes:
-		constants.BinaryAlgorithm.PutUint64(buf[4:12], uint64(len(v.Str)))
-		n += copy(buf[12:], v.Str)
+		n += copy(buf[0:], utils.EscapeString(v.Str))
 	case TypeInt64:
-		constants.BinaryAlgorithm.PutUint64(buf[4:12], uint64(v.I64))
-		n += constants.Uint64Size
+		// to keep the order of the values
+		u := uint64(v.I64) + (1 << 63)
+		constants.BinaryAlgorithm.PutUint64(buf[0:8], u)
+		n += 8
 	}
 	utils.Assertf(n == encodedSize, "encoded size(%d) mismatched the expected encoded size(%d)", n, encodedSize)
 	return n
 }
 
 func decodeValue(buf []byte, v *Value) (int, error) {
-	v.Type = constants.BinaryAlgorithm.Uint32(buf[:4])
-	valOrValueSize := constants.BinaryAlgorithm.Uint64(buf[4:12])
-	size := constants.Uint32Size + constants.Uint64Size
 	switch v.Type {
-	case TypeBytes:
-		v.Str = make([]byte, valOrValueSize)
-		size += copy(v.Str, buf[12:12+valOrValueSize])
 	case TypeInt64:
-		v.I64 = int64(valOrValueSize)
+		v.I64 = int64(constants.BinaryAlgorithm.Uint64(buf[0:8]) - (1 << 63))
+		return 8, nil
+	case TypeBytes:
+		idx := bytes.IndexByte(buf, 0)
+		v.Str = utils.UnEscapeString(buf[:idx+1])
+		return idx + 1, nil
 	default:
 		return 0, fmt.Errorf("unknown value type %v", v.Type)
 	}
-	return size, nil
 }
 
 type Record struct {
@@ -214,7 +210,7 @@ func encodePrimaryKey(prefix uint32, record *Record, n int) []byte {
 	}
 	var buf = make([]byte, bufSize)
 	constants.BinaryAlgorithm.PutUint32(buf[:4], prefix)
-	encodeValues(buf, record.Vals[:n])
+	encodeValues(buf[4:], record.Vals[:n])
 	return buf
 }
 
@@ -232,10 +228,7 @@ func encodeValues(buf []byte, out []*Value) int {
 }
 
 func decodeValues(buf []byte, out []*Value) error {
-	for idx, val := range out {
-		if val == nil {
-			out[idx] = new(Value)
-		}
+	for idx := range out {
 		n, err := decodeValue(buf, out[idx])
 		if err != nil {
 			return fmt.Errorf("decodeValues index(%d) error: %s", idx, err)
@@ -263,6 +256,7 @@ func (t *TableLayer) getTableDef(name string) (*TableDef, error) {
 	}
 	tDef = new(TableDef)
 	err = json.Unmarshal(rec.Get("def").Str, tDef)
+	t.tables[name] = tDef
 	return tDef, err
 }
 
@@ -281,6 +275,10 @@ func (t *TableLayer) Get(table string, rec *Record) error {
 
 	key := encodePrimaryKey(tDef.Prefix, rec, tDef.PKeys)
 	values := make([]*Value, len(tDef.Cols)-tDef.PKeys)
+	for i, typ := range tDef.Types[tDef.PKeys:] {
+		values[i] = new(Value)
+		values[i].Type = typ
+	}
 	err = t.db.View(func(tx *Tx) error {
 		val, exists := tx.Get(key)
 		if !exists {
@@ -435,7 +433,7 @@ func (t *TableLayer) nextPrefix() (uint32, error) {
 			return 0, errors.New("init meta error next_prefix not exists")
 		}
 	}
-	prefix = constants.BinaryAlgorithm.Uint32(rec.Get("key").Str)
+	prefix = constants.BinaryAlgorithm.Uint32(rec.Get("value").Str)
 	var buf = make([]byte, constants.Uint32Size)
 	constants.BinaryAlgorithm.PutUint32(buf, prefix+1)
 	var updatedRec = new(Record)
