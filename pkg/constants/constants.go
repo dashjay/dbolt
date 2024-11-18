@@ -17,10 +17,11 @@ const Uint64Size = 8
 const _ uint = BtreePageSize -
 	(BNodeHeader + 8 + 2 + 4 + BtreeMaxKeySize + BtreeMaxValSize)
 
-//nolint:gochecknoglobals // avoid using the wrong binary algorithm
 // BinaryAlgorithm is the algorithm for encoding binary values.
 // should not be changed to other algorithm like LittleEndian
 // because we need big-endian for order-preserved-keys
+//
+//nolint:gochecknoglobals // avoid using the wrong binary algorithm
 var BinaryAlgorithm = binary.BigEndian
 
 const MetaKeyNextPrefix = "next_prefix"

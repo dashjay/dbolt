@@ -19,6 +19,10 @@ var (
 	ErrCreateTableExists = errors.New("create table already exists")
 )
 
+// int64ToBytesHelper can be added to int64 before encoding it to bytes
+// it help to keep the order of the int64 in bytes
+const int64ToBytesHelper = 1 << 63
+
 const (
 	MetaTableName        = "@meta"
 	MetaTablePrefix      = 1
@@ -76,7 +80,7 @@ func encodeValue(buf []byte, v *Value) int {
 		n += copy(buf[0:], utils.EscapeString(v.Str))
 	case TypeInt64:
 		// to keep the order of the values
-		u := uint64(v.I64) + (1 << 63)
+		u := uint64(v.I64) + int64ToBytesHelper
 		constants.BinaryAlgorithm.PutUint64(buf[0:8], u)
 		n += 8
 	}
@@ -87,8 +91,8 @@ func encodeValue(buf []byte, v *Value) int {
 func decodeValue(buf []byte, v *Value) (int, error) {
 	switch v.Type {
 	case TypeInt64:
-		v.I64 = int64(constants.BinaryAlgorithm.Uint64(buf[0:8]) - (1 << 63))
-		return 8, nil
+		v.I64 = int64(constants.BinaryAlgorithm.Uint64(buf[0:8]) - int64ToBytesHelper)
+		return constants.Uint64Size, nil
 	case TypeBytes:
 		idx := bytes.IndexByte(buf, 0)
 		v.Str = utils.UnEscapeString(buf[:idx+1])
@@ -362,7 +366,6 @@ func (t *TableLayer) Insert(table string, rec *Record) error {
 		n := encodeValues(buf, rec.Vals[tDef.PKeys:])
 		return tx.Set(key, buf[:n])
 	})
-
 }
 
 func (t *TableLayer) Upsert(table string, rec *Record) (insert bool, err error) {
@@ -456,9 +459,8 @@ func (t *TableLayer) CreateTable(tDef *TableDef) error {
 	if err != nil {
 		if !errors.Is(err, ErrRecordNotFound) {
 			return err
-		} else {
-			// table dose not exists
 		}
+		// table dose not exists
 	} else {
 		return ErrCreateTableExists
 	}
