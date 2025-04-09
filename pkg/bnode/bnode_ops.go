@@ -2,6 +2,7 @@ package bnode
 
 import (
 	"bytes"
+	"sort"
 
 	"github.com/dashjay/dbolt/pkg/constants"
 	"github.com/dashjay/dbolt/pkg/utils"
@@ -26,24 +27,10 @@ func NodeLookupLE(node Node, key []byte) uint16 {
 	return found
 }
 
-// binSearch copied from sort.Search but update to `	i, j := 1, n`
-// due to 'the first key is a copy from the parent node'
-func binSearch(n int, f func(int) bool) int {
-	i, j := 0, n
-	for i < j {
-		h := int(uint(i+j) >> 1)
-		if !f(h) {
-			i = h + 1
-		} else {
-			j = h
-		}
-	}
-	return i
-}
-
+// NodeLookupLEBinary implement the binary search version for NodeLookupLE
 func NodeLookupLEBinary(node Node, key []byte) uint16 {
 	nKeys := node.KeyCounts()
-	found := binSearch(int(nKeys-1), func(i int) bool {
+	found := sort.Search(int(nKeys-1), func(i int) bool {
 		cmp := bytes.Compare(node.GetKey(uint16(i)), key)
 		if cmp < 0 {
 			return false
@@ -161,7 +148,7 @@ func nodeAppendRange2(newNode Node, oldNode Node,
 	copy(newNode[newNode._kvPos(dstNew):], oldNode[dataStart:dataEnd])
 }
 
-// split an oversize node into 2 so that the 2nd node always fits on a page
+// nodeSplit2 split an oversize node into 2 so that the 2nd node always fits on a page
 func nodeSplit2(left Node, right Node, old Node) {
 	//nolint:gomnd // split one node into 2 nodes, node have least 2 keys
 	utils.Assertf(old.KeyCounts() >= 2, "assertion failed: try to split a node with only %d key", old.KeyCounts())
